@@ -31,8 +31,8 @@ func KVLoad(path string) (map[string]string, error) {
 	return store, nil
 }
 
-func KVSave(path string, store map[string]string) error {
-	file, err := os.Create(path)
+func KVSave(path string, store map[string]string) error { // save keys to exisiting file
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
@@ -43,6 +43,7 @@ func KVSave(path string, store map[string]string) error {
 		writer.WriteString(line + "\n")
 	}
 	writer.Flush()
+
 	return nil
 }
 
@@ -53,4 +54,16 @@ func splitLineOnDelimiter(line []byte) (string, string) {
 		}
 	}
 	return "", ""
+}
+
+func ExtendKVStore(dst, src map[string]string) {
+	for key, value := range src {
+		dst[key] = value
+	}
+}
+
+func CopyKVStore(src map[string]string) map[string]string {
+	dst := make(map[string]string)
+	ExtendKVStore(dst, src)
+	return dst
 }

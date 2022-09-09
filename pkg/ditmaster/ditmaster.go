@@ -24,7 +24,7 @@ type DitMaster struct {
 type ParcelInfo struct {
 	Author    string
 	RepoPath  string
-	Tracker   string
+	Mirror    string
 	publicKey string
 }
 
@@ -150,7 +150,7 @@ func newManifestFile(path string) error {
 	}
 	Stores.Manifest["author"] = "@jonaslsa"
 	Stores.Manifest["repo_path"] = "/my-project/v1.0/"
-	Stores.Manifest["tracker"] = "dit.jonaslsa.com"
+	Stores.Manifest["mirror"] = "dit.jonaslsa.com"
 	Stores.Manifest["public_key"] = "(public key)"
 	err = KVSave(filepath.Join(path, ManifestPath), Stores.Manifest)
 	return err
@@ -174,10 +174,10 @@ func newMasterRecord(path string) error {
 }
 
 func GetParcelInfo(path string) ParcelInfo {
-	info := ParcelInfo{}
-	info.Author = Stores.Manifest["author"]
-	info.RepoPath = Stores.Manifest["repo_path"]
-	info.Tracker = Stores.Manifest["trackers"]
-	info.publicKey = Stores.Manifest["public_key"]
-	return info
+	return ParcelInfo{
+		Author:    Stores.Manifest["author"],
+		RepoPath:  Stores.Manifest["repo_path"],
+		Mirror:    Stores.Manifest["mirror"],
+		publicKey: Stores.Manifest["public_key"],
+	}
 }

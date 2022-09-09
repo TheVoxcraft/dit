@@ -69,22 +69,18 @@ type SerializedFile struct {
 	File         []byte
 }
 
-func SerializeFiles(files []string) []SerializedFile {
-	serialized_files := make([]SerializedFile, 0, len(files))
-	for _, file := range files {
-		checksum, err := GetFileChecksum(file)
-		if err != nil {
-			log.Fatal(err)
-		}
-		data, err := os.ReadFile(file)
-		if err != nil {
-			log.Fatal(err)
-		}
-		serialized_files = append(serialized_files, SerializedFile{
-			FilePath:     file,
-			FileChecksum: checksum,
-			File:         data,
-		})
+func SerializeFile(path string) SerializedFile {
+	checksum, err := GetFileChecksum(path)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return serialized_files
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return SerializedFile{
+		FilePath:     path,
+		FileChecksum: checksum,
+		File:         data,
+	}
 }

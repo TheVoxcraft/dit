@@ -3,10 +3,12 @@ package main
 import (
 	"database/sql"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/TheVoxcraft/dit/pkg/ditnet"
 	"github.com/akamensky/argparse"
@@ -44,6 +46,13 @@ func main() {
 	}
 	defer l.Close()
 
+	fmt.Println("Loading database:", *db_path)
+	db, err := sql.Open("sqlite3", *db_path)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
 	color.Green("\n * Serving dit-mirror on port: %d", *port)
 
 	for {
@@ -52,11 +61,11 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		go handleConnection(c)
+		go handleConnection(c, db)
 	}
 }
 
-func handleConnection(c net.Conn) {
+func handleConnection(c net.Conn, db *sql.DB) {
 	fmt.Printf("connection from %s\n", c.RemoteAddr().String())
 	dec := gob.NewDecoder(c)
 	msg := &ditnet.ClientMessage{}
@@ -67,6 +76,8 @@ func handleConnection(c net.Conn) {
 	}
 	if msg.MessageType == ditnet.MSG_SYNC_FILE {
 		fmt.Println(color.YellowString("@"+msg.OriginAuthor)+msg.ParcelPath, "~", msg.Message)
+
+		SyncFileToDB(db, msg.OriginAuthor, msg.ParcelPath, msg.Message, msg.Message2, msg.Data, msg.IsGZIP)
 
 		success := ditnet.ServerMessage{
 			MessageType: ditnet.MSG_SUCCESS,
@@ -81,6 +92,39 @@ func handleConnection(c net.Conn) {
 	}
 }
 
+func SyncFileToDB(db *sql.DB, author string, parcel string, path string, checksum string, data []byte, isGZIP bool) {
+	var id int
+	err := db.QueryRow("SELECT id FROM files WHERE author = ? AND parcel = ? AND path = ?", author, parcel, path).Scan(&id)
+	// if err is sql.ErrNoRows
+	timestamp := time.Now().String()
+
+	if errors.Is(err, sql.ErrNoRows) {
+		// insert
+		fmt.Println("insert")
+		stmt, err := db.Prepare("INSERT INTO files (author, parcel, path, checksum, data, isGZIP, created, last_sync) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+		if err != nil {
+			panic(err)
+		}
+		defer stmt.Close()
+		_, err = stmt.Exec(author, parcel, path, checksum, data, isGZIP, timestamp, timestamp)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "insert error: %v", err)
+		}
+	} else {
+		// update
+		fmt.Println("update")
+		stmt, err := db.Prepare("UPDATE files SET checksum = ?, data = ?, isGZIP = ?, last_sync = ? WHERE id = ?")
+		if err != nil {
+			panic(err)
+		}
+		defer stmt.Close()
+		_, err = stmt.Exec(checksum, data, isGZIP, timestamp, id)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "update error: %v", err)
+		}
+	}
+}
+
 func ensureSQLiteDB(db_path string) {
 	// open or create database
 	db, err := sql.Open("sqlite3", db_path)
@@ -91,7 +135,7 @@ func ensureSQLiteDB(db_path string) {
 
 	// create table if not exists, id, file path, checksum, data blob, isGZIP bool, created timestamp, last_sync timestamp
 	sqlStmt := `
-	create table if not exists files (id integer not null primary key, path text, checksum text, data blob, isGZIP bool, created timestamp, last_sync timestamp);
+	create table if not exists files (id integer not null primary key, author text, parcel text, path text, checksum text, data blob, isGZIP bool, created timestamp, last_sync timestamp);
 	`
 	_, err = db.Exec(sqlStmt)
 	if err != nil {

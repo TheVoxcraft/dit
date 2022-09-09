@@ -110,7 +110,7 @@ func main() {
 	case init.Happened():
 		if *initClean {
 			ditmaster.CleanDitFolder(".")
-			time.Sleep(200 * time.Millisecond) // wait for the folder to be deleted before writing
+			time.Sleep(1000 * time.Millisecond) // wait for the folder to be deleted before writing TODO: fix this
 		} else {
 			if hasDitParcel {
 				color.HiYellow("This directory is already a dit parcel. Use --clean to reinitialize.")

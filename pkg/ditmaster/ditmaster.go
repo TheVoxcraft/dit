@@ -163,9 +163,6 @@ func newMasterRecord(path string) error {
 		return err
 	}
 
-	Stores.Master[".dit/master"] = "1"
-	Stores.Master[".dit/manifest"] = "1"
-
 	err = KVSave(filepath.Join(path, MasterPath), Stores.Master)
 	if err != nil {
 		return err

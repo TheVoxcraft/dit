@@ -14,6 +14,10 @@ import (
 	"github.com/mattn/go-sqlite3"
 )
 
+const (
+	DITMIRROR_VERSION = "0.1.0"
+)
+
 func main() {
 	parser := argparse.NewParser("dit-mirror", "Mirror server for dit clients")
 
@@ -28,7 +32,8 @@ func main() {
 		return
 	}
 
-	sqlite_version, _, _ := sqlite3.Version()
+	fmt.Println("dit-mirror version:", DITMIRROR_VERSION)
+	sqlite_version, _, _ := sqlite3.Version() // this is needed to import and initialize the sqlite3 package
 	fmt.Println("SQLite version:", sqlite_version)
 	ensureSQLiteDB(*db_path)
 
@@ -57,11 +62,22 @@ func handleConnection(c net.Conn) {
 	msg := &ditnet.ClientMessage{}
 	err := dec.Decode(msg)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, "recv error:", err)
 		return
 	}
 	if msg.MessageType == ditnet.MSG_SYNC_FILE {
-		fmt.Println("sync", msg.Message)
+		fmt.Println(color.YellowString("@"+msg.OriginAuthor)+msg.ParcelPath, "~", msg.Message)
+
+		success := ditnet.ServerMessage{
+			MessageType: ditnet.MSG_SUCCESS,
+			Message:     "OK",
+		}
+		enc := gob.NewEncoder(c)
+		err = enc.Encode(success)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "senc error:", err)
+			return
+		}
 	}
 }
 

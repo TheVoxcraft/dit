@@ -148,7 +148,7 @@ func newManifestFile(path string) error {
 	if err != nil {
 		return err
 	}
-	Stores.Manifest["author"] = "@jonaslsa"
+	Stores.Manifest["author"] = "jonaslsa"
 	Stores.Manifest["repo_path"] = "/my-project/v1.0/"
 	Stores.Manifest["mirror"] = "localhost:3216"
 	Stores.Manifest["public_key"] = "(public key)"

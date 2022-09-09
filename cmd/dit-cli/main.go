@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/TheVoxcraft/dit/pkg/ditmaster"
 	"github.com/TheVoxcraft/dit/pkg/ditnet"
@@ -18,6 +19,8 @@ func main() {
 	// Actions
 	status := parser.NewCommand("status", "Show the status of the directory")
 	sync := parser.NewCommand("sync", "Sync the directory")
+	sync_up := sync.NewCommand("up", "Sync the directory to the server")
+	sync_down := sync.NewCommand("down", "Sync the directory from the server")
 	init := parser.NewCommand("init", "Initialize a directory")
 	initClean := init.Flag("c", "clean", &argparse.Options{Required: false, Help: "Clean initialization, removes all .dit files."})
 
@@ -72,36 +75,42 @@ func main() {
 			return
 		}
 		PrintPreStatus(parcel, "sync")
-		sync_files := make([]ditsync.SyncFile, 0)
-		for _, file := range parcel_files {
-			checksum, err := ditsync.GetFileChecksum(file)
-			if err != nil {
-				// warn and continue
-				log.Println(err)
-			}
 
-			curr := ditsync.SyncFile{
-				FilePath:     file,
-				FileChecksum: checksum,
-				IsDirty:      false,
-				IsNew:        false,
-			}
+		if sync_up.Happened() {
+			sync_files := make([]ditsync.SyncFile, 0)
+			for _, file := range parcel_files {
+				checksum, err := ditsync.GetFileChecksum(file)
+				if err != nil {
+					// warn and continue
+					log.Println(err)
+				}
 
-			// try to get from master store
-			if ditmaster.Stores.Master[file] == "" {
-				curr.IsNew = true
-				//ditmaster.Stores.Master[file] = checksum
-			} else if ditmaster.Stores.Master[file] != checksum {
-				curr.IsDirty = true
-				//ditmaster.Stores.Master[file] = checksum
+				curr := ditsync.SyncFile{
+					FilePath:     file,
+					FileChecksum: checksum,
+					IsDirty:      false,
+					IsNew:        false,
+				}
+
+				// try to get from master store
+				if ditmaster.Stores.Master[file] == "" {
+					curr.IsNew = true
+				} else if ditmaster.Stores.Master[file] != checksum {
+					curr.IsDirty = true
+				}
+				sync_files = append(sync_files, curr)
 			}
-			sync_files = append(sync_files, curr)
+			SyncFilesUp(sync_files, parcel)
+		} else if sync_down.Happened() {
+			color.HiRed("Not implemented yet.")
+		} else {
+			fmt.Println(parser.Usage(err))
 		}
-		SyncFiles(sync_files, parcel)
 
 	case init.Happened():
 		if *initClean {
 			ditmaster.CleanDitFolder(".")
+			time.Sleep(200 * time.Millisecond) // wait for the folder to be deleted before writing
 		} else {
 			if hasDitParcel {
 				color.HiYellow("This directory is already a dit parcel. Use --clean to reinitialize.")
@@ -123,21 +132,29 @@ func PrintPreStatus(parcel ditmaster.ParcelInfo, action string) {
 	fmt.Println("\n    " + action + ":")
 }
 
-func SyncFiles(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
+func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 	for _, file := range sync_files {
-		if file.IsDirty {
-			color.Blue("\tModified: %s", file.FilePath)
-		} else if file.IsNew {
-			color.Green("\tAdd: %s", file.FilePath)
+		if file.IsDirty || file.IsNew {
 			file_data, is_gzip := ditsync.GetFileData(file.FilePath)
 			m := ditnet.ClientMessage{
 				OriginAuthor: parcel.Author,
+				ParcelPath:   parcel.RepoPath,
 				MessageType:  ditnet.MSG_SYNC_FILE,
-				Message:      file.FileChecksum,
+				Message:      file.FilePath,
+				Message2:     file.FileChecksum,
 				Data:         file_data,
 				IsGZIP:       is_gzip,
 			}
+
 			ditnet.SendMessageToServer(m, parcel.Mirror)
+			if file.IsNew {
+				color.Green("\tAdd: %s", file.FilePath)
+			} else {
+				color.Blue("\tModified: %s", file.FilePath)
+			}
+
+			ditmaster.Stores.Master[file.FilePath] = file.FileChecksum
+
 		} else {
 			color.White("\tSkipping: %s", file.FilePath)
 		}
@@ -147,5 +164,4 @@ func SyncFiles(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 }

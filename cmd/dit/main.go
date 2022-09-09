@@ -38,7 +38,7 @@ func main() {
 		}
 	}
 	parcel := ditmaster.GetParcelInfo(".")
-	files, err := ditsync.GetFileList(".")
+	parcel_files, err := ditsync.GetFileList(".")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func main() {
 		}
 		PrintPreStatus(parcel, "status")
 
-		for _, file := range files {
+		for _, file := range parcel_files {
 			checksum, err := ditsync.GetFileChecksum(file)
 			if err != nil {
 				log.Fatal(err)
@@ -71,29 +71,33 @@ func main() {
 			return
 		}
 		PrintPreStatus(parcel, "sync")
-
-		for _, file := range files {
+		sync_files := make([]ditsync.SyncFile, 0)
+		for _, file := range parcel_files {
 			checksum, err := ditsync.GetFileChecksum(file)
 			if err != nil {
 				// warn and continue
 				log.Println(err)
 			}
 
+			curr := ditsync.SyncFile{
+				FilePath:     file,
+				FileChecksum: checksum,
+				IsDirty:      false,
+				IsNew:        false,
+			}
+
 			// try to get from master store
 			if ditmaster.Stores.Master[file] == "" {
-				color.Green("\tAdd: %s", file)
-				ditmaster.Stores.Master[file] = checksum
-			} else if ditmaster.Stores.Master[file] == checksum {
-				color.White("\tSkipping: %s", file)
-			} else {
-				color.Blue("\tModified: %s", file)
-				ditmaster.Stores.Master[file] = checksum
+				curr.IsNew = true
+				//ditmaster.Stores.Master[file] = checksum
+			} else if ditmaster.Stores.Master[file] != checksum {
+				curr.IsDirty = true
+				//ditmaster.Stores.Master[file] = checksum
 			}
-			err = ditmaster.SyncStoresToDisk(".")
-			if err != nil {
-				log.Fatal(err)
-			}
+			sync_files = append(sync_files, curr)
 		}
+		SyncFiles(sync_files)
+
 	case init.Happened():
 		if *initClean {
 			ditmaster.CleanDitFolder(".")
@@ -113,6 +117,23 @@ func main() {
 }
 
 func PrintPreStatus(parcel ditmaster.ParcelInfo, action string) {
-	fmt.Println("* Parcel", color.YellowString(parcel.Author)+color.GreenString(parcel.RepoPath))
+	fmt.Println(color.CyanString("[-]"), "Parcel", color.YellowString(parcel.Author)+color.GreenString(parcel.RepoPath))
 	fmt.Println("\n   " + action + ":")
+}
+
+func SyncFiles(sync_files []ditsync.SyncFile) {
+	for _, file := range sync_files {
+		if file.IsDirty {
+			color.Blue("\tModified: %s", file.FilePath)
+		} else if file.IsNew {
+			color.Green("\tAdd: %s", file.FilePath)
+		} else {
+			color.White("\tSkipping: %s", file.FilePath)
+		}
+	}
+
+	err := ditmaster.SyncStoresToDisk(".") // save stores to disk
+	if err != nil {
+		log.Fatal(err)
+	}
 }

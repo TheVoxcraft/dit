@@ -10,6 +10,13 @@ import (
 
 var IgnoreList = []string{".git", ".gitignore", ".dit"}
 
+type SyncFile struct {
+	FilePath     string
+	FileChecksum string
+	IsDirty      bool
+	IsNew        bool
+}
+
 func isIgnored(path string) bool {
 	// TODO: iterate through path components and check if any of them are in the ignore list
 	for _, ignore := range IgnoreList {
@@ -54,4 +61,30 @@ func GetFileChecksum(path string) (string, error) {
 
 	friendly_string := base32.StdEncoding.EncodeToString(hash[:])
 	return friendly_string, nil
+}
+
+type SerializedFile struct {
+	FilePath     string
+	FileChecksum string
+	File         []byte
+}
+
+func SerializeFiles(files []string) []SerializedFile {
+	serialized_files := make([]SerializedFile, 0, len(files))
+	for _, file := range files {
+		checksum, err := GetFileChecksum(file)
+		if err != nil {
+			log.Fatal(err)
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			log.Fatal(err)
+		}
+		serialized_files = append(serialized_files, SerializedFile{
+			FilePath:     file,
+			FileChecksum: checksum,
+			File:         data,
+		})
+	}
+	return serialized_files
 }

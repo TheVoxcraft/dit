@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/TheVoxcraft/dit/pkg/ditmaster"
+	"github.com/TheVoxcraft/dit/pkg/ditnet"
 	"github.com/TheVoxcraft/dit/pkg/ditsync"
 	"github.com/akamensky/argparse"
 	"github.com/fatih/color"
@@ -96,7 +97,7 @@ func main() {
 			}
 			sync_files = append(sync_files, curr)
 		}
-		SyncFiles(sync_files)
+		SyncFiles(sync_files, parcel)
 
 	case init.Happened():
 		if *initClean {
@@ -118,15 +119,25 @@ func main() {
 
 func PrintPreStatus(parcel ditmaster.ParcelInfo, action string) {
 	fmt.Println(color.CyanString("[-]"), "Parcel", color.YellowString(parcel.Author)+color.GreenString(parcel.RepoPath))
-	fmt.Println("\n   " + action + ":")
+	color.Blue("    Mirror %s", parcel.Mirror)
+	fmt.Println("\n    " + action + ":")
 }
 
-func SyncFiles(sync_files []ditsync.SyncFile) {
+func SyncFiles(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 	for _, file := range sync_files {
 		if file.IsDirty {
 			color.Blue("\tModified: %s", file.FilePath)
 		} else if file.IsNew {
 			color.Green("\tAdd: %s", file.FilePath)
+			file_data, is_gzip := ditsync.GetFileData(file.FilePath)
+			m := ditnet.ClientMessage{
+				OriginAuthor: parcel.Author,
+				MessageType:  ditnet.MSG_SYNC_FILE,
+				Message:      file.FileChecksum,
+				Data:         file_data,
+				IsGZIP:       is_gzip,
+			}
+			ditnet.SendMessageToServer(m, parcel.Mirror)
 		} else {
 			color.White("\tSkipping: %s", file.FilePath)
 		}
@@ -136,4 +147,5 @@ func SyncFiles(sync_files []ditsync.SyncFile) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 }

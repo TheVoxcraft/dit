@@ -150,7 +150,7 @@ func newManifestFile(path string) error {
 	}
 	Stores.Manifest["author"] = "@jonaslsa"
 	Stores.Manifest["repo_path"] = "/my-project/v1.0/"
-	Stores.Manifest["mirror"] = "dit.jonaslsa.com"
+	Stores.Manifest["mirror"] = "localhost:3216"
 	Stores.Manifest["public_key"] = "(public key)"
 	err = KVSave(filepath.Join(path, ManifestPath), Stores.Manifest)
 	return err

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/gob"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/TheVoxcraft/dit/pkg/ditmaster"
 	"github.com/TheVoxcraft/dit/pkg/ditnet"
 	"github.com/akamensky/argparse"
 	"github.com/fatih/color"
@@ -67,6 +69,8 @@ func main() {
 
 func handleConnection(c net.Conn, db *sql.DB) {
 	fmt.Printf("connection from %s\n", c.RemoteAddr().String())
+	defer c.Close()
+
 	dec := gob.NewDecoder(c)
 	msg := &ditnet.ClientMessage{}
 	err := dec.Decode(msg)
@@ -74,6 +78,7 @@ func handleConnection(c net.Conn, db *sql.DB) {
 		fmt.Fprintln(os.Stderr, "recv error:", err)
 		return
 	}
+
 	if msg.MessageType == ditnet.MSG_SYNC_FILE {
 		fmt.Println(color.YellowString("@"+msg.OriginAuthor)+msg.ParcelPath, "~", msg.Message)
 
@@ -89,7 +94,72 @@ func handleConnection(c net.Conn, db *sql.DB) {
 			fmt.Fprintln(os.Stderr, "senc error:", err)
 			return
 		}
+	} else if msg.MessageType == ditnet.MSG_GET_PARCEL {
+		fmt.Println("GET_PARCEL", color.YellowString("@"+msg.OriginAuthor)+msg.ParcelPath)
+		netparcel, err := GetParcelFiles(db, msg.OriginAuthor, msg.ParcelPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "parse error:", err)
+			return
+		}
+
+		// gob encode nparcel to bytes
+		var parcelBytes bytes.Buffer
+		enc := gob.NewEncoder(&parcelBytes)
+		err = enc.Encode(netparcel)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gob encode error:", err)
+			return
+		}
+
+		parcel_msg := ditnet.ServerMessage{
+			MessageType: ditnet.MSG_PARCEL,
+			Message:     "@" + msg.OriginAuthor + msg.ParcelPath,
+			Data:        parcelBytes.Bytes(),
+		}
+		enc = gob.NewEncoder(c)
+		err = enc.Encode(parcel_msg)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "send error:", err)
+			return
+		}
+
+	} else {
+		fmt.Println("unknown message type:", msg.MessageType)
 	}
+}
+
+func GetParcelFiles(db *sql.DB, author string, parcel string) (ditnet.NetParcel, error) {
+	rows, err := db.Query("SELECT * FROM files WHERE author=? AND parcel=?", author, parcel)
+	if err != nil {
+		return ditnet.NetParcel{}, err
+	}
+	defer rows.Close()
+
+	filePaths := make([]string, 0)
+
+	for rows.Next() {
+		var id int
+		var author string
+		var repopath string
+		var filepath string
+		var checksum string
+		var data []byte
+		var isGZIP bool
+		var created string
+		var last_sync string
+		err = rows.Scan(&id, &author, &repopath, &filepath, &checksum, &data, &isGZIP, &created, &last_sync)
+		if err != nil {
+			return ditnet.NetParcel{}, err
+		}
+		filePaths = append(filePaths, filepath)
+	}
+
+	netparcel := ditnet.NetParcel{
+		Info:      ditmaster.ParcelInfo{Author: author, RepoPath: parcel},
+		FilePaths: filePaths,
+	}
+
+	return netparcel, nil
 }
 
 func SyncFileToDB(db *sql.DB, author string, parcel string, path string, checksum string, data []byte, isGZIP bool) {

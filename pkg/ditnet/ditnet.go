@@ -4,20 +4,27 @@ import (
 	"encoding/gob"
 	"log"
 	"net"
+
+	"github.com/TheVoxcraft/dit/pkg/ditmaster"
 )
 
 const (
-	// MessageTypes
+	/* MessageTypes */
+
+	// Bidirectional messages
 	MSG_PING = iota
 	MSG_PONG = iota
 
-	MSG_REGISTER = iota
-
-	MSG_SUCCESS = iota
-	MSG_FAILURE = iota
-
+	// Client -> Server
 	MSG_NEW_PARCEL = iota
 	MSG_SYNC_FILE  = iota
+	MSG_GET_PARCEL = iota
+
+	// Server -> Client
+	MSG_REGISTER = iota
+	MSG_SUCCESS  = iota
+	MSG_FAILURE  = iota
+	MSG_PARCEL   = iota
 )
 
 type ClientMessage struct {
@@ -33,9 +40,15 @@ type ClientMessage struct {
 type ServerMessage struct {
 	MessageType int
 	Message     string
+	Data        []byte
 }
 
-func SendMessageToServer(msg ClientMessage, mirror_addr string) {
+type NetParcel struct {
+	Info      ditmaster.ParcelInfo
+	FilePaths []string
+}
+
+func SendMessageToServer(msg ClientMessage, mirror_addr string) ServerMessage {
 	conn, err := net.Dial("tcp", mirror_addr)
 	if err != nil {
 		log.Fatal("Failed to connect to mirror: ", err)
@@ -48,7 +61,7 @@ func SendMessageToServer(msg ClientMessage, mirror_addr string) {
 		log.Fatal("Failed to send message to mirror: ", err)
 	}
 
-	// Read OK from server
+	// Read RESPONSE from server
 	dec := gob.NewDecoder(conn)
 	server_msg := &ServerMessage{}
 	err = dec.Decode(server_msg)
@@ -56,7 +69,5 @@ func SendMessageToServer(msg ClientMessage, mirror_addr string) {
 		log.Fatal("Failed to read message from mirror: ", err)
 	}
 
-	if server_msg.MessageType == MSG_SUCCESS {
-		return
-	}
+	return *server_msg
 }

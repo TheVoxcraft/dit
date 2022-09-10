@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"os"
@@ -102,7 +104,7 @@ func main() {
 			}
 			SyncFilesUp(sync_files, parcel)
 		} else if sync_down.Happened() {
-			color.HiRed("Not implemented yet.")
+			SyncFilesDown(parcel)
 		} else {
 			fmt.Println(parser.Usage(err))
 		}
@@ -146,7 +148,10 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 				IsGZIP:       is_gzip,
 			}
 
-			ditnet.SendMessageToServer(m, parcel.Mirror)
+			resp := ditnet.SendMessageToServer(m, parcel.Mirror)
+			if resp.MessageType != ditnet.MSG_SUCCESS {
+				color.HiRed("ERROR: Failed to sync file", file.FilePath, "to", parcel.Mirror)
+			}
 			if file.IsNew {
 				color.Green("\tAdd: %s", file.FilePath)
 			} else {
@@ -163,5 +168,25 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 	err := ditmaster.SyncStoresToDisk(".") // save stores to disk
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func SyncFilesDown(parcel ditmaster.ParcelInfo) {
+	req := ditnet.ClientMessage{
+		OriginAuthor: parcel.Author,
+		ParcelPath:   parcel.RepoPath,
+		MessageType:  ditnet.MSG_GET_PARCEL,
+	}
+
+	resp := ditnet.SendMessageToServer(req, parcel.Mirror) // Get file paths from mirror
+
+	if resp.MessageType == ditnet.MSG_PARCEL {
+		// decode netparcel
+		var netparcel ditnet.NetParcel
+		gob.NewDecoder(bytes.NewReader(resp.Data)).Decode(&netparcel)
+		fmt.Println("Got", len(netparcel.FilePaths), "file paths from mirror")
+	} else {
+		color.HiRed("ERROR: Failed to get file paths from", parcel.Mirror)
+		fmt.Println("Got response:", resp.MessageType, resp.Message)
 	}
 }

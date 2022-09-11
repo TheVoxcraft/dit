@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/TheVoxcraft/dit/pkg/ditmaster"
 	"github.com/TheVoxcraft/dit/pkg/ditnet"
@@ -124,4 +125,85 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func SetDitConfig(author string, mirror string, pub_key string) {
+	// home dir
+	home, err := os.UserHomeDir()
+	home_dit := filepath.Join(home, ".dit")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = os.Create(home_dit)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	config_map := map[string]string{
+		"author": author,
+		"mirror": mirror,
+		"pubkey": pub_key,
+	}
+
+	err = ditmaster.KVSave(home_dit, config_map)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func GetDitFromConfig(key string) string {
+	// home dir
+	home, err := os.UserHomeDir()
+	home_dit := filepath.Join(home, ".dit")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	config_map, err := ditmaster.KVLoad(home_dit)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return config_map[key]
+}
+
+func PrintDitConfig() {
+	// home dir
+	home, err := os.UserHomeDir()
+	home_dit := filepath.Join(home, ".dit")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	config_map, err := ditmaster.KVLoad(home_dit)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for key, value := range config_map {
+		fmt.Println("   ", color.MagentaString(key), ":", value)
+	}
+}
+
+func CanonicalizeRepoPath(repo string) string {
+	forbidden := []string{":", "*", "?", "\"", "<", ">", "|"}
+	for _, char := range forbidden {
+		if strings.Contains(repo, char) {
+			log.Fatal("ERROR: Repo name cannot contain", char)
+		}
+	}
+	new := strings.TrimSpace(repo)
+	new = strings.ReplaceAll(new, " ", "-")
+	new = strings.ReplaceAll(new, "//", "/")
+	new = strings.ReplaceAll(new, "\\", "/")
+	if new[0] != '/' {
+		new = "/" + new
+	}
+	if new[len(new)-1] != '/' {
+		new = new + "/"
+	}
+	return strings.ToLower(new)
 }

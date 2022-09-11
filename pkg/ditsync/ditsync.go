@@ -69,6 +69,7 @@ func GetFileChecksum(path string) (string, error) {
 	return friendly_string, nil
 }
 
+/* SerializedFile: Unused for now
 type SerializedFile struct {
 	FilePath     string
 	FileChecksum string
@@ -89,7 +90,7 @@ func SerializeFile(path string) SerializedFile {
 		FileChecksum: checksum,
 		File:         data,
 	}
-}
+}*/
 
 func GetFileData(path string) ([]byte, bool) {
 	data, err := os.ReadFile(path)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/TheVoxcraft/dit/pkg/ditclient"
@@ -18,11 +19,22 @@ func main() {
 
 	// Actions
 	status := parser.NewCommand("status", "Show the status of the directory")
+
+	config := parser.NewCommand("config", "Configure dit")
+	config_set := config.NewCommand("set", "Set a config value")
+	config_print := config.NewCommand("print", "Print the config to stdout")
+	configSetAuthor := config_set.String("a", "author", &argparse.Options{Required: true, Help: "Author for parcels.", Default: ""})
+	configSetMirror := config_set.String("m", "mirror", &argparse.Options{Required: true, Help: "Default mirror to use.", Default: ""})
+	//configPublicKey := config.String("p", "public-key", &argparse.Options{Required: true, Help: "Path to the public key.", Default: ""})
+
 	sync := parser.NewCommand("sync", "Sync the directory")
 	sync_up := sync.NewCommand("up", "Sync the directory to the server")
 	sync_down := sync.NewCommand("down", "Sync the directory from the server")
+
 	init := parser.NewCommand("init", "Initialize a directory")
-	initClean := init.Flag("c", "clean", &argparse.Options{Required: false, Help: "Clean initialization, removes all .dit files."})
+	initClean := init.Flag("c", "clean", &argparse.Options{Required: false, Help: "Clean initialization, removes all files in .dit"})
+	initRepoPath := init.String("r", "repo", &argparse.Options{Required: true, Help: "Path to the repository, used to identify the parcel."})
+	initMirror := init.String("m", "mirror", &argparse.Options{Required: false, Help: "Mirror to use for the parcel, overrides the default mirror."})
 
 	err := parser.Parse(os.Args)
 	if err != nil {
@@ -69,12 +81,39 @@ func main() {
 				color.HiYellow("\tM %s", file)
 			}
 		}
+	case config.Happened():
+		if config_set.Happened() {
+			author := *configSetAuthor
+			mirror := *configSetMirror
+			//publicKey := *configPublicKey
+
+			if author == "" {
+				log.Fatal("Author cannot be empty")
+			}
+			if mirror == "" {
+				log.Fatal("Mirror cannot be empty")
+			}
+			//if publicKey == "" {
+			//	log.Fatal("Public key cannot be empty")
+			//}
+
+			ditclient.SetDitConfig(author, mirror, "")
+			fmt.Println(color.CyanString("[-]"), "Config set.")
+		} else if config_print.Happened() {
+			fmt.Println(color.CyanString("[-]"), "Dit config")
+			ditclient.PrintDitConfig()
+		}
 	case sync.Happened():
 		if !hasDitParcel {
 			color.HiYellow("This directory is not a dit parcel.")
 			return
 		}
 		PrintPreStatus(parcel, "sync")
+
+		if ditmaster.Stores.Manifest["author"] == "" {
+			color.HiYellow("Author not set, please use 'dit config -a <author>'")
+			return
+		}
 
 		if sync_up.Happened() {
 			sync_files := make([]ditsync.SyncFile, 0)
@@ -102,8 +141,8 @@ func main() {
 			}
 			ditclient.SyncFilesUp(sync_files, parcel)
 		} else if sync_down.Happened() {
-			ditclient.SyncFilesDown(parcel, "test/")
-			ditmaster.SyncStoresToDisk(".") // save stores to disk
+			ditclient.SyncFilesDown(parcel, "test/") // TODO: change to . for current directory
+			ditmaster.SyncStoresToDisk(".")          // save stores to disk
 		} else {
 			fmt.Println(parser.Usage(err))
 		}
@@ -118,7 +157,32 @@ func main() {
 				return
 			}
 		}
-		err := ditmaster.InitDitFolder(".")
+
+		if *initRepoPath == "" {
+			log.Fatal("Repo path cannot be empty")
+		}
+
+		// try to get author and mirror from config
+		author := ditclient.GetDitFromConfig("author")
+		mirror := ditclient.GetDitFromConfig("mirror")
+		if author == "" || mirror == "" {
+			color.HiYellow("Author and/or mirror not set, please use 'dit config set'")
+			return
+		}
+
+		if *initMirror != "" { // override mirror for this parcel
+			mirror = *initMirror
+		}
+
+		canonicalRepoPath := ditclient.CanonicalizeRepoPath(*initRepoPath)
+
+		parcel_info := ditmaster.ParcelInfo{
+			Author:   strings.TrimSpace(author),
+			RepoPath: canonicalRepoPath,
+			Mirror:   strings.TrimSpace(mirror),
+		}
+
+		err := ditmaster.InitDitFolder(".", parcel_info)
 		if err != nil {
 			ditmaster.CleanDitFolder(".") // clean up as init failed
 			log.Fatal("Failed to initialize dit folder: ", err)

@@ -105,7 +105,7 @@ func CleanDitFolder(path string) error {
 	return nil
 }
 
-func InitDitFolder(path string) error {
+func InitDitFolder(path string, info ParcelInfo) error {
 	ditFolderPath := filepath.Join(path, DitPath)
 
 	// create a folder called .dit
@@ -129,7 +129,7 @@ func InitDitFolder(path string) error {
 	defer lock.Unlock() // Unlock the file when we're done
 
 	// create manifest file
-	err = newManifestFile(path)
+	err = newManifestFile(path, info)
 	if err != nil {
 		return err
 	}
@@ -142,16 +142,16 @@ func InitDitFolder(path string) error {
 	return nil
 }
 
-func newManifestFile(path string) error {
+func newManifestFile(path string, info ParcelInfo) error {
 	// create a manifest file
 	_, err := os.Create(filepath.Join(path, ManifestPath))
 	if err != nil {
 		return err
 	}
-	Stores.Manifest["author"] = "jonaslsa"
-	Stores.Manifest["repo_path"] = "/my-project/v1.0/"
-	Stores.Manifest["mirror"] = "localhost:3216"
-	Stores.Manifest["public_key"] = "(public key)"
+	Stores.Manifest["author"] = info.Author
+	Stores.Manifest["repo_path"] = info.RepoPath
+	Stores.Manifest["mirror"] = info.Mirror
+	Stores.Manifest["public_key"] = info.publicKey
 	err = KVSave(filepath.Join(path, ManifestPath), Stores.Manifest)
 	return err
 }

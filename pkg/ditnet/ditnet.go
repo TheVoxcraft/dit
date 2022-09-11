@@ -19,12 +19,14 @@ const (
 	MSG_NEW_PARCEL = iota
 	MSG_SYNC_FILE  = iota
 	MSG_GET_PARCEL = iota
+	MSG_GET_FILE   = iota
 
 	// Server -> Client
 	MSG_REGISTER = iota
 	MSG_SUCCESS  = iota
 	MSG_FAILURE  = iota
 	MSG_PARCEL   = iota
+	MSG_FILE     = iota
 )
 
 type ClientMessage struct {
@@ -35,12 +37,14 @@ type ClientMessage struct {
 	Message2     string
 	Data         []byte
 	IsGZIP       bool
+	Secret       string
 }
 
 type ServerMessage struct {
 	MessageType int
 	Message     string
 	Data        []byte
+	IsGZIP      bool
 }
 
 type NetParcel struct {

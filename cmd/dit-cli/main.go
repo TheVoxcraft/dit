@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/TheVoxcraft/dit/pkg/ditmaster"
@@ -68,7 +69,7 @@ func main() {
 			} else if ditmaster.Stores.Master[file] == checksum {
 				color.White("\t- %s", file)
 			} else {
-				color.Blue("\tM %s", file)
+				color.HiYellow("\tM %s", file)
 			}
 		}
 	case sync.Happened():
@@ -104,7 +105,8 @@ func main() {
 			}
 			SyncFilesUp(sync_files, parcel)
 		} else if sync_down.Happened() {
-			SyncFilesDown(parcel)
+			SyncFilesDown(parcel, "test/")
+			ditmaster.SyncStoresToDisk(".") // save stores to disk
 		} else {
 			fmt.Println(parser.Usage(err))
 		}
@@ -130,7 +132,7 @@ func main() {
 
 func PrintPreStatus(parcel ditmaster.ParcelInfo, action string) {
 	fmt.Println(color.CyanString("[-]"), "Parcel", color.YellowString(parcel.Author)+color.GreenString(parcel.RepoPath))
-	color.Blue("    Mirror %s", parcel.Mirror)
+	color.Blue("           Mirror %s", parcel.Mirror)
 	fmt.Println("\n    " + action + ":")
 }
 
@@ -155,7 +157,7 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 			if file.IsNew {
 				color.Green("\tAdd: %s", file.FilePath)
 			} else {
-				color.Blue("\tModified: %s", file.FilePath)
+				color.HiYellow("\tModified: %s", file.FilePath)
 			}
 
 			ditmaster.Stores.Master[file.FilePath] = file.FileChecksum
@@ -171,7 +173,7 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 	}
 }
 
-func SyncFilesDown(parcel ditmaster.ParcelInfo) {
+func SyncFilesDown(parcel ditmaster.ParcelInfo, base_path string) {
 	req := ditnet.ClientMessage{
 		OriginAuthor: parcel.Author,
 		ParcelPath:   parcel.RepoPath,
@@ -180,13 +182,68 @@ func SyncFilesDown(parcel ditmaster.ParcelInfo) {
 
 	resp := ditnet.SendMessageToServer(req, parcel.Mirror) // Get file paths from mirror
 
-	if resp.MessageType == ditnet.MSG_PARCEL {
-		// decode netparcel
-		var netparcel ditnet.NetParcel
-		gob.NewDecoder(bytes.NewReader(resp.Data)).Decode(&netparcel)
-		fmt.Println("Got", len(netparcel.FilePaths), "file paths from mirror")
-	} else {
+	var netparcel ditnet.NetParcel
+	if resp.MessageType != ditnet.MSG_PARCEL {
 		color.HiRed("ERROR: Failed to get file paths from", parcel.Mirror)
-		fmt.Println("Got response:", resp.MessageType, resp.Message)
+		fmt.Println("Got response type", resp.MessageType, "MSG: ", resp.Message)
+		return
 	}
+
+	gob.NewDecoder(bytes.NewReader(resp.Data)).Decode(&netparcel)
+	fmt.Println("   ", len(netparcel.FilePaths), "files from mirror")
+
+	fpaths := netparcel.FilePaths
+	for _, file := range fpaths {
+		color.Blue("\tGot %s", file)
+	}
+
+	// get files from mirror
+	for _, fpath := range fpaths {
+		req = ditnet.ClientMessage{
+			OriginAuthor: parcel.Author,
+			ParcelPath:   parcel.RepoPath,
+			MessageType:  ditnet.MSG_GET_FILE,
+			Message:      fpath,
+		}
+		resp := ditnet.SendMessageToServer(req, parcel.Mirror)
+		if resp.MessageType != ditnet.MSG_FILE {
+			color.HiRed("ERROR: Failed to get file", fpath, "from", parcel.Mirror)
+			continue
+		}
+
+		data := resp.Data
+		if resp.IsGZIP { // decompress if needed
+			uncompressed, err := ditsync.GZIPDecompress(data)
+			if err != nil {
+				color.HiRed("ERROR: Failed to decompress", fpath, "from", parcel.Mirror)
+				continue
+			}
+			data = uncompressed
+		}
+
+		// write file to disk using os
+		err := WriteFileWithDir(filepath.Join(base_path, fpath), data)
+		if err != nil {
+			color.HiRed("ERROR: Failed to write", fpath, "to disk")
+			continue
+		}
+
+		// update master store
+		// get checksum of file
+		checksum, err := ditsync.GetFileChecksum(filepath.Join(base_path, fpath))
+		if err != nil {
+			color.HiRed("ERROR: Failed to get checksum of", fpath)
+			continue
+		}
+		ditmaster.Stores.Master[fpath] = checksum
+	}
+}
+
+func WriteFileWithDir(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }

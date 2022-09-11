@@ -123,6 +123,26 @@ func handleConnection(c net.Conn, db *sql.DB) {
 			return
 		}
 
+	} else if msg.MessageType == ditnet.MSG_GET_FILE {
+		fmt.Println("GET_FILE", color.YellowString("@"+msg.OriginAuthor)+msg.ParcelPath, "["+msg.Message+"]")
+		filedata, gzip, err := GetFile(db, msg.OriginAuthor, msg.ParcelPath, msg.Message)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "db error:", err)
+			return
+		}
+
+		file_msg := ditnet.ServerMessage{
+			MessageType: ditnet.MSG_FILE,
+			Message:     msg.Message,
+			Data:        filedata,
+			IsGZIP:      gzip,
+		}
+		enc := gob.NewEncoder(c)
+		err = enc.Encode(file_msg)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "send error:", err)
+			return
+		}
 	} else {
 		fmt.Println("unknown message type:", msg.MessageType)
 	}
@@ -160,6 +180,22 @@ func GetParcelFiles(db *sql.DB, author string, parcel string) (ditnet.NetParcel,
 	}
 
 	return netparcel, nil
+}
+
+func GetFile(db *sql.DB, author string, parcel string, file string) ([]byte, bool, error) {
+	row := db.QueryRow("SELECT data, isGZIP FROM files WHERE author=? AND parcel=? AND path=?", author, parcel, file)
+	if row.Err() != nil {
+		return nil, false, row.Err()
+	}
+	var data []byte
+	var isGZIP bool
+
+	err := row.Scan(&data, &isGZIP)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return data, isGZIP, nil
 }
 
 func SyncFileToDB(db *sql.DB, author string, parcel string, path string, checksum string, data []byte, isGZIP bool) {

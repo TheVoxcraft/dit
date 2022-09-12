@@ -15,8 +15,6 @@ const (
 	MINIMUM_GZIP_SIZE = 1024
 )
 
-//var IgnoreList = []string{".git/*", ".gitignore", ".dit/*"}
-
 type SyncFile struct {
 	FilePath     string
 	FileChecksum string
@@ -26,6 +24,9 @@ type SyncFile struct {
 
 func isIgnored(fpath string, IgnoreList []string) bool {
 	for _, ignore := range IgnoreList {
+		if ignore == "" {
+			continue
+		}
 		wildcardFront := ignore[0] == '*'
 		wildcardBack := ignore[len(ignore)-1] == '*'
 		if wildcardFront && wildcardBack {

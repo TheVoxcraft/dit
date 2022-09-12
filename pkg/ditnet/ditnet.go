@@ -11,20 +11,16 @@ import (
 const (
 	/* MessageTypes */
 
-	// Bidirectional messages
-	MSG_PING = iota
-	MSG_PONG = iota
-
 	// Client -> Server
-	MSG_NEW_PARCEL = iota
+	MSG_NEW_PARCEL = iota // unused
 	MSG_SYNC_FILE  = iota
 	MSG_GET_PARCEL = iota
 	MSG_GET_FILE   = iota
 
 	// Server -> Client
-	MSG_REGISTER = iota
+	MSG_REGISTER = iota // unused
 	MSG_SUCCESS  = iota
-	MSG_FAILURE  = iota
+	MSG_FAILURE  = iota // unused
 	MSG_PARCEL   = iota
 	MSG_FILE     = iota
 )

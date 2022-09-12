@@ -20,8 +20,8 @@ const (
 
 type DitMaster struct {
 	Manifest        map[string]string // Open manifest file holds important indexable information for mirror
-	Master          map[string]string // Master record file holds all files and their hashes
-	PrivateManifest map[string]string // Private manifest file holds fields which are not to be shared with mirror
+	Master          map[string]string // Master record file holds all synced files and their hashes
+	PrivateManifest map[string]string // Private manifest file holds fields which are not to be shared with mirror (this will be a part of the encrypted data blob)
 }
 
 type ParcelInfo struct {

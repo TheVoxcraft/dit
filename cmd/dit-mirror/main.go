@@ -168,6 +168,9 @@ func handleConnection(c net.Conn, db *sql.DB) {
 			return
 		}
 
+	} else if msg.MessageType == ditnet.MSG_REGISTER {
+		fmt.Println("REGISTER", color.YellowString("@"+msg.OriginAuthor)+msg.ParcelPath)
+
 	} else {
 		fmt.Println("unknown message type:", msg.MessageType)
 	}

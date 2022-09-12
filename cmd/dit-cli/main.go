@@ -127,7 +127,7 @@ func main() {
 		}
 
 		if sync_up.Happened() {
-			sync_files := make([]ditsync.SyncFile, 0)
+			sync_files := make([]ditsync.SyncFile, 0) // list over all possible files to sync
 			for _, file := range parcel_files {
 				checksum, err := ditsync.GetFileChecksum(file)
 				if err != nil {

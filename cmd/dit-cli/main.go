@@ -28,7 +28,7 @@ func main() {
 
 	config := parser.NewCommand("config", "Configure dit")
 	config_set := config.NewCommand("set", "Set config values")
-	config_print := config.NewCommand("print", "Print the config to stdout")
+	config_list := config.NewCommand("list", "List the config to stdout")
 	configSetAuthor := config_set.String("a", "author", &argparse.Options{Required: true, Help: "Author for parcels.", Default: ""})
 	configSetMirror := config_set.String("m", "mirror", &argparse.Options{Required: true, Help: "Default mirror to use.", Default: ""})
 	//configPublicKey := config.String("p", "public-key", &argparse.Options{Required: true, Help: "Path to the public key.", Default: ""})
@@ -118,7 +118,7 @@ func main() {
 
 			config_path := ditclient.SetDitConfig(author, mirror, "")
 			fmt.Println(color.CyanString("[-]"), color.YellowString(config_path), "Config set.")
-		} else if config_print.Happened() {
+		} else if config_list.Happened() {
 			fmt.Println(color.CyanString("[-]"), "Dit config")
 			ditclient.PrintDitConfig()
 		}
@@ -244,7 +244,7 @@ func main() {
 		author, repoPath := ditclient.ParseFullRepoPath(*getRepo)
 		repoPath = ditclient.CanonicalizeRepoPath(repoPath)
 		if author == "" || repoPath == "" {
-			log.Fatal("Invalid repo path")
+			log.Fatal("Invalid repo path: missing either author or repo path")
 		}
 
 		mirror := ditclient.GetDitFromConfig("mirror")

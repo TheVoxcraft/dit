@@ -11,15 +11,17 @@ import (
 )
 
 const (
-	DitPath      = "/.dit/"
-	ManifestPath = "/.dit/manifest"
-	MasterPath   = "/.dit/master"
-	LockFilePath = "/.dit/dit.lock"
+	DitPath             = "/.dit/"
+	ManifestPath        = "/.dit/manifest"
+	PrivateManifestPath = "/.dit/parcel_manifest"
+	MasterPath          = "/.dit/master"
+	LockFilePath        = "/.dit/dit.lock"
 )
 
 type DitMaster struct {
-	Manifest map[string]string
-	Master   map[string]string
+	Manifest        map[string]string // Open manifest file holds important indexable information for mirror
+	Master          map[string]string // Master record file holds all files and their hashes
+	PrivateManifest map[string]string // Private manifest file holds fields which are not to be shared with mirror
 }
 
 type ParcelInfo struct {
@@ -31,13 +33,15 @@ type ParcelInfo struct {
 }
 
 var diskStores = DitMaster{ // these stores are supposed to be synced to disk data
-	Manifest: make(map[string]string),
-	Master:   make(map[string]string),
+	Manifest:        make(map[string]string),
+	Master:          make(map[string]string),
+	PrivateManifest: make(map[string]string),
 }
 
 var Stores = DitMaster{
-	Manifest: make(map[string]string),
-	Master:   make(map[string]string),
+	Manifest:        make(map[string]string),
+	Master:          make(map[string]string),
+	PrivateManifest: make(map[string]string),
 }
 
 func HasDitParcel(path string) bool {
@@ -55,6 +59,10 @@ func SyncStoresToDisk(path string) error {
 	if err != nil {
 		return err
 	}
+	err = syncStoreToDisk(diskStores.PrivateManifest, Stores.PrivateManifest, filepath.Join(path, PrivateManifestPath))
+	if err != nil {
+		return err
+	}
 	err = syncStoreToDisk(diskStores.Master, Stores.Master, filepath.Join(path, MasterPath))
 	if err != nil {
 		return err
@@ -67,15 +75,21 @@ func LoadStoresFromDisk(path string) error {
 	if err != nil {
 		return err
 	}
+	private, err := KVLoad(filepath.Join(path, PrivateManifestPath))
+	if err != nil {
+		return err
+	}
 	master, err := KVLoad(filepath.Join(path, MasterPath))
 	if err != nil {
 		return err
 	}
 	ExtendKVStore(Stores.Manifest, manifest)
 	ExtendKVStore(Stores.Master, master)
+	ExtendKVStore(Stores.PrivateManifest, private)
 	// copy the stores to disk
 	diskStores.Manifest = CopyKVStore(Stores.Manifest)
 	diskStores.Master = CopyKVStore(Stores.Master)
+	diskStores.PrivateManifest = CopyKVStore(Stores.PrivateManifest)
 	return nil
 }
 
@@ -130,11 +144,16 @@ func InitDitFolder(path string, info ParcelInfo) error {
 	}
 	defer lock.Unlock() // Unlock the file when we're done
 
-	// create manifest file
+	// create manifest files
 	err = newManifestFile(path, info)
 	if err != nil {
 		return err
 	}
+	err = newPrivateManifest(path, info)
+	if err != nil {
+		return err
+	}
+	// create master file
 	err = newMasterRecord(path)
 	if err != nil {
 		return err
@@ -154,8 +173,18 @@ func newManifestFile(path string, info ParcelInfo) error {
 	Stores.Manifest["repo_path"] = info.RepoPath
 	Stores.Manifest["mirror"] = info.Mirror
 	Stores.Manifest["public_key"] = info.publicKey
-	Stores.Manifest["ignore_list"] = strings.Join(info.IgnoreList, ",")
 	err = KVSave(filepath.Join(path, ManifestPath), Stores.Manifest)
+	return err
+}
+
+func newPrivateManifest(path string, info ParcelInfo) error {
+	// create a manifest file
+	_, err := os.Create(filepath.Join(path, PrivateManifestPath))
+	if err != nil {
+		return err
+	}
+	Stores.PrivateManifest["ignore_list"] = strings.Join(info.IgnoreList, ",")
+	err = KVSave(filepath.Join(path, PrivateManifestPath), Stores.PrivateManifest)
 	return err
 }
 
@@ -179,7 +208,7 @@ func GetParcelInfo(path string) ParcelInfo {
 		RepoPath:   Stores.Manifest["repo_path"],
 		Mirror:     Stores.Manifest["mirror"],
 		publicKey:  Stores.Manifest["public_key"],
-		IgnoreList: strings.Split(Stores.Manifest["ignore_list"], ","),
+		IgnoreList: strings.Split(Stores.PrivateManifest["ignore_list"], ","),
 	}
 }
 
@@ -187,7 +216,7 @@ func (ParcelInfo) AddIgnorePattern(p string) {
 	if strings.Contains(p, ",") {
 		log.Fatal("ignore pattern cannot contain a comma")
 	}
-	l := strings.Split(Stores.Manifest["ignore_list"], ",")
+	l := strings.Split(Stores.PrivateManifest["ignore_list"], ",")
 	l = append(l, p)
 	Stores.Manifest["ignore_list"] = strings.Join(l, ",")
 }
@@ -196,7 +225,7 @@ func (ParcelInfo) RemoveIgnorePattern(p string) {
 	if strings.Contains(p, ",") {
 		log.Fatal("ignore pattern cannot contain a comma")
 	}
-	l := strings.Split(Stores.Manifest["ignore_list"], ",")
+	l := strings.Split(Stores.PrivateManifest["ignore_list"], ",")
 	for i, v := range l {
 		if v == p {
 			l = append(l[:i], l[i+1:]...)

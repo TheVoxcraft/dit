@@ -25,7 +25,7 @@ func main() {
 
 	// Actions
 	get := parser.NewCommand("get", "Get a parcel from a mirror")
-	getRepo := get.String("r", "repo", &argparse.Options{Required: true, Help: "Full path to the parcel. format: @author/repo/path"})
+	getRepo := get.String("r", "repo", &argparse.Options{Required: true, Help: "Full path to the parcel. format: @author/repo/path"}) // TODO: change to positional argument
 	getMirror := get.String("m", "mirror", &argparse.Options{Required: false, Help: "Mirror to get the parcel from, overrides the default mirror.", Default: ""})
 
 	status := parser.NewCommand("status", "Show the status of the directory")

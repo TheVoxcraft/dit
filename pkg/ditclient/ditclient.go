@@ -127,7 +127,7 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 	}
 }
 
-func SetDitConfig(author string, mirror string, pub_key string) {
+func SetDitConfig(author string, mirror string, pub_key string) string {
 	// home dir
 	home, err := os.UserHomeDir()
 	home_dit := filepath.Join(home, ".dit")
@@ -150,6 +150,7 @@ func SetDitConfig(author string, mirror string, pub_key string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	return home_dit
 }
 
 func GetDitFromConfig(key string) string {

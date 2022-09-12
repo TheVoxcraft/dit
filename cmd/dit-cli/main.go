@@ -97,8 +97,8 @@ func main() {
 			//	log.Fatal("Public key cannot be empty")
 			//}
 
-			ditclient.SetDitConfig(author, mirror, "")
-			fmt.Println(color.CyanString("[-]"), "Config set.")
+			config_path := ditclient.SetDitConfig(author, mirror, "")
+			fmt.Println(color.CyanString("[-]"), color.YellowString(config_path), "Config set.")
 		} else if config_print.Happened() {
 			fmt.Println(color.CyanString("[-]"), "Dit config")
 			ditclient.PrintDitConfig()

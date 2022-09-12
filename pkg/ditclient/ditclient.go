@@ -133,7 +133,7 @@ func SyncMasterUp(parcel ditmaster.ParcelInfo) {
 func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo, save_to_master bool) {
 	for _, file := range sync_files {
 		if file.IsDirty || file.IsNew {
-			file_data, is_gzip := ditsync.GetFileData(file.FilePath)
+			file_data, is_gzip, b_before, b_after := ditsync.GetFileData(file.FilePath)
 			m := ditnet.ClientMessage{
 				OriginAuthor: parcel.Author,
 				ParcelPath:   parcel.RepoPath,
@@ -148,10 +148,23 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo, sav
 			if resp.MessageType != ditnet.MSG_SUCCESS {
 				color.HiRed("ERROR: Failed to sync file", file.FilePath, "to", parcel.Mirror)
 			}
+
+			comp_str := ""
+			if is_gzip {
+				kb_before := float64(b_before) / 1024
+				kb_after := float64(b_after) / 1024
+				comp_str = fmt.Sprintf("(gzip %.2f -> %.2f kB)", kb_before, kb_after)
+			}
+
 			if file.IsNew {
-				color.Green("\tAdd: %s", file.FilePath)
+				fmt.Println(color.GreenString("\tAdd: %s", file.FilePath), comp_str)
 			} else {
-				color.HiYellow("\tModified: %s", file.FilePath)
+				fmt.Println(color.HiYellowString("\tModified: %s", file.FilePath), comp_str)
+			}
+
+			if b_after >= ditsync.WARNING_SIZE {
+				mb_after := float64(b_after) / 1000000
+				color.HiBlue("\tLarge file warning: %s (%f MB)", file.FilePath, mb_after)
 			}
 
 			if save_to_master {

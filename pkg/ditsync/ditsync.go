@@ -13,6 +13,7 @@ import (
 
 const (
 	MINIMUM_GZIP_SIZE = 1024
+	WARNING_SIZE      = 1024 * 1024 * 20 // 20MB
 )
 
 type SyncFile struct {
@@ -109,7 +110,7 @@ func SerializeFile(path string) SerializedFile {
 	}
 }*/
 
-func GetFileData(path string) ([]byte, bool) {
+func GetFileData(path string) ([]byte, bool, int, int) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatal(err)
@@ -120,9 +121,9 @@ func GetFileData(path string) ([]byte, bool) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		return compressed, true
+		return compressed, true, len(data), len(compressed)
 	}
-	return data, false
+	return data, false, len(data), len(data)
 }
 
 func GZIPCompress(data []byte) ([]byte, error) {

@@ -38,7 +38,7 @@ func SyncFilesDown(parcel ditmaster.ParcelInfo, base_path string, get_files []st
 		gob.NewDecoder(bytes.NewReader(resp.Data)).Decode(&netparcel)
 		fmt.Println("   ", len(netparcel.FilePaths), "files from mirror")
 
-		fpaths := netparcel.FilePaths
+		fpaths = netparcel.FilePaths
 		for _, file := range fpaths {
 			color.Blue("\tGot %s", file)
 		}

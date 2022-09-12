@@ -144,9 +144,80 @@ func handleConnection(c net.Conn, db *sql.DB) {
 			fmt.Fprintln(os.Stderr, "send error:", err)
 			return
 		}
+	} else if msg.MessageType == ditnet.MSG_SYNC_MASTER {
+		fmt.Println("SYNC_MASTER", color.YellowString("@"+msg.OriginAuthor)+msg.ParcelPath)
+		// decode to netmaster
+		var netmaster ditnet.NetMaster
+		dec := gob.NewDecoder(bytes.NewReader(msg.Data))
+		err := dec.Decode(&netmaster)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gob decode error:", err)
+			return
+		}
+
+		removed := RemoveFilesNotInMaster(db, msg.OriginAuthor, msg.ParcelPath, netmaster.Master)
+		removed_str := strconv.Itoa(removed)
+		success := ditnet.ServerMessage{
+			MessageType: ditnet.MSG_SUCCESS,
+			Message:     removed_str,
+		}
+		enc := gob.NewEncoder(c)
+		err = enc.Encode(success)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "send error:", err)
+			return
+		}
+
 	} else {
 		fmt.Println("unknown message type:", msg.MessageType)
 	}
+}
+
+func RemoveFilesNotInMaster(db *sql.DB, author string, parcelpath string, master map[string]string) int {
+	author = strings.TrimPrefix(author, "@")
+	// for each row in the database, check if it is in the master
+	// if it doesn't, delete it
+	rows, err := db.Query("SELECT path, checksum FROM files WHERE author=? AND parcel=?", author, parcelpath)
+	if err != nil {
+		fmt.Println(err)
+		return 0
+	}
+	defer rows.Close()
+
+	removed := 0
+
+	del_tx, err := db.Begin()
+	if err != nil {
+		fmt.Println("del_tx begin error:", err)
+		return 0
+	}
+
+	for rows.Next() {
+		var path string
+		var checksum string
+		err = rows.Scan(&path, &checksum)
+		if err != nil {
+			fmt.Println(err)
+			return removed
+		}
+
+		// check if the file is in the master
+		if master[path] == "" {
+			// if not, delete it
+			fmt.Println("DEL", path)
+			_, err = del_tx.Exec("DELETE FROM files WHERE path=? AND checksum=?", path, checksum)
+			if err != nil {
+				fmt.Println("DEL_TX ERROR", err)
+				return removed
+			}
+			removed++
+		}
+	}
+	err = del_tx.Commit()
+	if err != nil {
+		fmt.Println("del_tx commit error:", err)
+	}
+	return removed
 }
 
 func GetParcelFiles(db *sql.DB, author string, parcel string) (ditnet.NetParcel, error) {
@@ -185,6 +256,7 @@ func GetParcelFiles(db *sql.DB, author string, parcel string) (ditnet.NetParcel,
 }
 
 func GetFile(db *sql.DB, author string, parcel string, file string) ([]byte, bool, error) {
+	author = strings.TrimPrefix(author, "@")
 	row := db.QueryRow("SELECT data, isGZIP FROM files WHERE author=? AND parcel=? AND path=?", author, parcel, file)
 	if row.Err() != nil {
 		return nil, false, row.Err()
@@ -201,14 +273,15 @@ func GetFile(db *sql.DB, author string, parcel string, file string) ([]byte, boo
 }
 
 func SyncFileToDB(db *sql.DB, author string, parcel string, path string, checksum string, data []byte, isGZIP bool) {
+	author = strings.TrimPrefix(author, "@")
 	var id int
 	err := db.QueryRow("SELECT id FROM files WHERE author = ? AND parcel = ? AND path = ?", author, parcel, path).Scan(&id)
 	// if err is sql.ErrNoRows
 	timestamp := time.Now().String()
 
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) { // TODO: check if this works as expected
 		// insert
-		fmt.Println("insert")
+		//fmt.Println("insert")
 		stmt, err := db.Prepare("INSERT INTO files (author, parcel, path, checksum, data, isGZIP, created, last_sync) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			panic(err)
@@ -220,7 +293,7 @@ func SyncFileToDB(db *sql.DB, author string, parcel string, path string, checksu
 		}
 	} else {
 		// update
-		fmt.Println("update")
+		//fmt.Println("update")
 		stmt, err := db.Prepare("UPDATE files SET checksum = ?, data = ?, isGZIP = ?, last_sync = ? WHERE id = ?")
 		if err != nil {
 			panic(err)

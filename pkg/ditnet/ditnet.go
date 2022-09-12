@@ -12,10 +12,11 @@ const (
 	/* MessageTypes */
 
 	// Client -> Server
-	MSG_NEW_PARCEL = iota // unused
-	MSG_SYNC_FILE  = iota
-	MSG_GET_PARCEL = iota
-	MSG_GET_FILE   = iota
+	MSG_NEW_PARCEL  = iota // unused
+	MSG_SYNC_FILE   = iota
+	MSG_SYNC_MASTER = iota
+	MSG_GET_PARCEL  = iota
+	MSG_GET_FILE    = iota
 
 	// Server -> Client
 	MSG_REGISTER = iota // unused
@@ -46,6 +47,10 @@ type ServerMessage struct {
 type NetParcel struct {
 	Info      ditmaster.ParcelInfo
 	FilePaths []string
+}
+
+type NetMaster struct { // Used to sync local master with remote master (removing deleted files)
+	Master map[string]string
 }
 
 func SendMessageToServer(msg ClientMessage, mirror_addr string) ServerMessage {

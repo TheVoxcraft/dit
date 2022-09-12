@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ func main() {
 
 	sync := parser.NewCommand("sync", "Sync the directory")
 	sync_up := sync.NewCommand("up", "Sync the directory to the parcel mirror")
+	sync_up_master := sync_up.Flag("", "only-master", &argparse.Options{Required: false, Help: "Only sync the master file (removing files from mirror if not present)", Default: false})
 	sync_down := sync.NewCommand("down", "Sync the directory from the parcel mirror")
 
 	init := parser.NewCommand("init", "Initialize a directory")
@@ -45,6 +47,12 @@ func main() {
 	ignoreAdd := ignore.String("a", "add", &argparse.Options{Required: false, Help: "Add a pattern to the ignore list. usage: dit ignore -a \".git/*\""})
 	ignoreRemove := ignore.String("r", "remove", &argparse.Options{Required: false, Help: "Remove a pattern from the ignore list."})
 	ignoreList := ignore.Flag("l", "list", &argparse.Options{Required: false, Help: "List the ignore patterns."})
+
+	master := parser.NewCommand("master", "Manage the parcel master record")
+	masterClear := master.NewCommand("clear", "Remove all records from the master table")
+	masterRemove := master.NewCommand("rm", "Remove a file from the master record")
+	masterList := master.NewCommand("list", "List all files in the master record")
+	masterRemoveFile := masterRemove.StringPositional(&argparse.Options{Required: true, Help: "File to remove from the master record."})
 
 	err := parser.Parse(os.Args)
 	if err != nil {
@@ -127,6 +135,11 @@ func main() {
 		}
 
 		if sync_up.Happened() {
+			if *sync_up_master {
+				ditclient.SyncMasterUp(parcel)
+				fmt.Println(color.CyanString("[-]"), "Synced master file to mirror.")
+				return
+			}
 			sync_files := make([]ditsync.SyncFile, 0) // list over all possible files to sync
 			for _, file := range parcel_files {
 				checksum, err := ditsync.GetFileChecksum(file)
@@ -150,7 +163,8 @@ func main() {
 				}
 				sync_files = append(sync_files, curr)
 			}
-			ditclient.SyncFilesUp(sync_files, parcel)
+			ditclient.SyncMasterUp(parcel)
+			ditclient.SyncFilesUp(sync_files, parcel, true)
 		} else if sync_down.Happened() {
 			ditclient.SyncFilesDown(parcel, *OverrideCmdDir, []string{})
 			ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
@@ -264,8 +278,40 @@ func main() {
 		// sync files down
 		ditclient.SyncFilesDown(new_parcel, *OverrideCmdDir, files_to_get)
 		ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
-	}
+	case master.Happened():
+		if !hasDitParcel {
+			color.HiYellow("This directory is not a dit parcel.")
+			return
+		}
+		if masterList.Happened() {
+			PrintPreStatus(parcel, "master")
+			for file := range ditmaster.Stores.Master {
+				color.Magenta("\t%s", file)
+			}
+		} else if masterClear.Happened() {
+			ditmaster.Stores.Master = make(map[string]string)
+			ditmaster.SyncStoresToDisk(*OverrideCmdDir)
+			fmt.Println(color.CyanString("[-]"), "Cleared master table")
+		} else if masterRemove.Happened() {
+			if *masterRemoveFile == "" {
+				log.Fatal("File path cannot be empty")
+			}
 
+			file_path, err := filepath.Rel(*OverrideCmdDir, *masterRemoveFile)
+			if err != nil {
+				log.Fatal("Failed to get relative path: ", err)
+			}
+			if _, ok := ditmaster.Stores.Master[file_path]; !ok {
+				color.HiRed("File not found in master")
+				return
+			}
+			delete(ditmaster.Stores.Master, file_path)
+			ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
+			fmt.Println(color.CyanString("[-]"), "Removed file", color.YellowString(file_path))
+		} else {
+			fmt.Println(parser.Usage(err))
+		}
+	}
 }
 
 func PrintPreStatus(parcel ditmaster.ParcelInfo, action string) {

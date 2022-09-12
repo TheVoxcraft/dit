@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/TheVoxcraft/dit/pkg/ditmaster"
@@ -94,7 +95,42 @@ func WriteFileWithDir(path string, data []byte) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
+func SyncMasterUp(parcel ditmaster.ParcelInfo) {
+	netmaster := ditnet.NetMaster{
+		Master: ditmaster.Stores.Master,
+	}
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(netmaster)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msg := ditnet.ClientMessage{
+		OriginAuthor: parcel.Author,
+		ParcelPath:   parcel.RepoPath,
+		MessageType:  ditnet.MSG_SYNC_MASTER,
+		Data:         buf.Bytes(),
+		IsGZIP:       false,
+	}
+
+	resp := ditnet.SendMessageToServer(msg, parcel.Mirror)
+	if resp.MessageType != ditnet.MSG_SUCCESS {
+		color.HiRed("ERROR: Failed to sync master store to mirror")
+	}
+	// int parse resp.Message to get number of files synced
+	count, err := strconv.Atoi(resp.Message)
+	if err != nil {
+		color.HiRed("ERROR: Failed to parse number of files synced")
+		return
+	}
+	if count > 0 {
+		color.HiGreen("Removed %d files from mirror", count)
+	}
+}
+
+func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo, save_to_master bool) {
 	for _, file := range sync_files {
 		if file.IsDirty || file.IsNew {
 			file_data, is_gzip := ditsync.GetFileData(file.FilePath)
@@ -118,7 +154,9 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 				color.HiYellow("\tModified: %s", file.FilePath)
 			}
 
-			ditmaster.Stores.Master[file.FilePath] = file.FileChecksum
+			if save_to_master {
+				ditmaster.Stores.Master[file.FilePath] = file.FileChecksum
+			}
 
 		} else {
 			color.White("\tSkipping: %s", file.FilePath)

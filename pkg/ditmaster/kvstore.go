@@ -34,20 +34,28 @@ func KVLoad(path string) (map[string]string, error) {
 }
 
 func KVSave(path string, store map[string]string) error { // save keys to exisiting file
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 	writer := bufio.NewWriter(file)
-	for key, value := range store {
-		if strings.Contains(key+value, kvDELIMITER) {
-			return errors.New("key or value contains delimiter")
-		} else if strings.Contains(key+value, "\n") {
-			return errors.New("key or value contains newline")
+
+	if len(store) == 0 {
+		os.Truncate(path, 0)
+	} else {
+		for key, value := range store {
+			if strings.Contains(key+value, kvDELIMITER) {
+				return errors.New("key or value contains delimiter")
+			} else if strings.Contains(key+value, "\n") {
+				return errors.New("key or value contains newline")
+			}
+			line := key + kvDELIMITER + value
+			writer.WriteString(line + "\n")
+			if err != nil {
+				return err
+			}
 		}
-		line := key + kvDELIMITER + value
-		writer.WriteString(line + "\n")
 	}
 	writer.Flush()
 

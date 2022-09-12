@@ -95,10 +95,15 @@ func LoadStoresFromDisk(path string) error {
 
 func syncStoreToDisk(disk map[string]string, store map[string]string, path string) error {
 	dirty := false
-	for key, value := range store {
-		if disk[key] != value {
-			disk[key] = value
-			dirty = true
+	if len(disk) != len(store) {
+		disk = CopyKVStore(store)
+		dirty = true
+	} else {
+		for key, value := range store {
+			if disk[key] != value {
+				disk[key] = value
+				dirty = true
+			}
 		}
 	}
 	if dirty {

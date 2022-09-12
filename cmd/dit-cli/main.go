@@ -37,7 +37,7 @@ func main() {
 	initMirror := init.String("m", "mirror", &argparse.Options{Required: false, Help: "Mirror to use for the parcel, overrides the default mirror."})
 
 	ignore := parser.NewCommand("ignore", "Add file patterns to ignore list")
-	ignoreAdd := ignore.String("a", "add", &argparse.Options{Required: false, Help: "Add a pattern to the ignore list."})
+	ignoreAdd := ignore.String("a", "add", &argparse.Options{Required: false, Help: "Add a pattern to the ignore list. usage: dit ignore -a \".git/*\""})
 	ignoreRemove := ignore.String("r", "remove", &argparse.Options{Required: false, Help: "Remove a pattern from the ignore list."})
 	ignoreList := ignore.Flag("l", "list", &argparse.Options{Required: false, Help: "List the ignore patterns."})
 

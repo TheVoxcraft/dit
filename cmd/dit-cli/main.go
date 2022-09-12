@@ -21,7 +21,7 @@ func main() {
 	status := parser.NewCommand("status", "Show the status of the directory")
 
 	config := parser.NewCommand("config", "Configure dit")
-	config_set := config.NewCommand("set", "Set a config value")
+	config_set := config.NewCommand("set", "Set config values")
 	config_print := config.NewCommand("print", "Print the config to stdout")
 	configSetAuthor := config_set.String("a", "author", &argparse.Options{Required: true, Help: "Author for parcels.", Default: ""})
 	configSetMirror := config_set.String("m", "mirror", &argparse.Options{Required: true, Help: "Default mirror to use.", Default: ""})
@@ -36,6 +36,11 @@ func main() {
 	initRepoPath := init.String("r", "repo", &argparse.Options{Required: true, Help: "Path to the repository, used to identify the parcel."})
 	initMirror := init.String("m", "mirror", &argparse.Options{Required: false, Help: "Mirror to use for the parcel, overrides the default mirror."})
 
+	ignore := parser.NewCommand("ignore", "Add file patterns to ignore list")
+	ignoreAdd := ignore.String("a", "add", &argparse.Options{Required: false, Help: "Add a pattern to the ignore list."})
+	ignoreRemove := ignore.String("r", "remove", &argparse.Options{Required: false, Help: "Remove a pattern from the ignore list."})
+	ignoreList := ignore.Flag("l", "list", &argparse.Options{Required: false, Help: "List the ignore patterns."})
+
 	err := parser.Parse(os.Args)
 	if err != nil {
 		// In case of error print error and print usage
@@ -45,18 +50,19 @@ func main() {
 	}
 
 	hasDitParcel := ditmaster.HasDitParcel(".") // check if the current directory has a .dit folder
-
+	parcel := ditmaster.ParcelInfo{}
+	parcel_files := []string{}
 	// try to load parcel
 	if hasDitParcel {
 		err = ditmaster.LoadStoresFromDisk(".")
 		if err != nil {
 			log.Fatal(err)
 		}
-	}
-	parcel := ditmaster.GetParcelInfo(".")
-	parcel_files, err := ditsync.GetFileList(".")
-	if err != nil {
-		log.Fatal(err)
+		parcel = ditmaster.GetParcelInfo(".")
+		parcel_files, err = ditsync.GetFileList(".", parcel.IgnoreList)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	switch {
@@ -177,15 +183,38 @@ func main() {
 		canonicalRepoPath := ditclient.CanonicalizeRepoPath(*initRepoPath)
 
 		parcel_info := ditmaster.ParcelInfo{
-			Author:   strings.TrimSpace(author),
-			RepoPath: canonicalRepoPath,
-			Mirror:   strings.TrimSpace(mirror),
+			Author:     strings.TrimSpace(author),
+			RepoPath:   canonicalRepoPath,
+			Mirror:     strings.TrimSpace(mirror),
+			IgnoreList: []string{".git/*", ".gitignore", ".dit/*"},
 		}
 
 		err := ditmaster.InitDitFolder(".", parcel_info)
 		if err != nil {
 			ditmaster.CleanDitFolder(".") // clean up as init failed
 			log.Fatal("Failed to initialize dit folder: ", err)
+		}
+	case ignore.Happened():
+		if !hasDitParcel {
+			color.HiYellow("This directory is not a dit parcel.")
+			return
+		}
+
+		if *ignoreAdd != "" {
+			parcel.AddIgnorePattern(*ignoreAdd)
+			ditmaster.SyncStoresToDisk(".") // save stores to disk
+			fmt.Println(color.CyanString("[-]"), "Added pattern", color.YellowString(*ignoreAdd))
+		} else if *ignoreRemove != "" {
+			parcel.RemoveIgnorePattern(*ignoreRemove)
+			ditmaster.SyncStoresToDisk(".") // save stores to disk
+			fmt.Println(color.CyanString("[-]"), "Removed pattern", color.YellowString(*ignoreAdd))
+		} else if *ignoreList {
+			PrintPreStatus(parcel, "ignore patterns")
+			for _, pattern := range parcel.IgnoreList {
+				color.Magenta("\t%s ", pattern)
+			}
+		} else {
+			fmt.Println(parser.Usage(err))
 		}
 	}
 

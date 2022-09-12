@@ -15,7 +15,7 @@ const (
 	MINIMUM_GZIP_SIZE = 1024
 )
 
-var IgnoreList = []string{".git/*", ".gitignore", ".dit/*"}
+//var IgnoreList = []string{".git/*", ".gitignore", ".dit/*"}
 
 type SyncFile struct {
 	FilePath     string
@@ -24,7 +24,7 @@ type SyncFile struct {
 	IsNew        bool
 }
 
-func isIgnored(fpath string) bool {
+func isIgnored(fpath string, IgnoreList []string) bool {
 	for _, ignore := range IgnoreList {
 		wildcardFront := ignore[0] == '*'
 		wildcardBack := ignore[len(ignore)-1] == '*'
@@ -52,11 +52,11 @@ func isIgnored(fpath string) bool {
 	return false
 }
 
-func GetFileList(path string) ([]string, error) {
+func GetFileList(path string, ignoreList []string) ([]string, error) {
 	files := make([]string, 0, 10)
 	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
-			if isIgnored(path) {
+			if isIgnored(path, ignoreList) {
 				return nil
 			}
 			rel_path, err := filepath.Rel(".", path)

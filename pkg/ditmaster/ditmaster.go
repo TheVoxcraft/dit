@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nightlyone/lockfile"
 )
@@ -22,10 +23,11 @@ type DitMaster struct {
 }
 
 type ParcelInfo struct {
-	Author    string
-	RepoPath  string
-	Mirror    string
-	publicKey string
+	Author     string
+	RepoPath   string
+	Mirror     string
+	publicKey  string
+	IgnoreList []string
 }
 
 var diskStores = DitMaster{ // these stores are supposed to be synced to disk data
@@ -152,6 +154,7 @@ func newManifestFile(path string, info ParcelInfo) error {
 	Stores.Manifest["repo_path"] = info.RepoPath
 	Stores.Manifest["mirror"] = info.Mirror
 	Stores.Manifest["public_key"] = info.publicKey
+	Stores.Manifest["ignore_list"] = strings.Join(info.IgnoreList, ",")
 	err = KVSave(filepath.Join(path, ManifestPath), Stores.Manifest)
 	return err
 }
@@ -172,9 +175,32 @@ func newMasterRecord(path string) error {
 
 func GetParcelInfo(path string) ParcelInfo {
 	return ParcelInfo{
-		Author:    Stores.Manifest["author"],
-		RepoPath:  Stores.Manifest["repo_path"],
-		Mirror:    Stores.Manifest["mirror"],
-		publicKey: Stores.Manifest["public_key"],
+		Author:     Stores.Manifest["author"],
+		RepoPath:   Stores.Manifest["repo_path"],
+		Mirror:     Stores.Manifest["mirror"],
+		publicKey:  Stores.Manifest["public_key"],
+		IgnoreList: strings.Split(Stores.Manifest["ignore_list"], ","),
 	}
+}
+
+func (ParcelInfo) AddIgnorePattern(p string) {
+	if strings.Contains(p, ",") {
+		log.Fatal("ignore pattern cannot contain a comma")
+	}
+	l := strings.Split(Stores.Manifest["ignore_list"], ",")
+	l = append(l, p)
+	Stores.Manifest["ignore_list"] = strings.Join(l, ",")
+}
+
+func (ParcelInfo) RemoveIgnorePattern(p string) {
+	if strings.Contains(p, ",") {
+		log.Fatal("ignore pattern cannot contain a comma")
+	}
+	l := strings.Split(Stores.Manifest["ignore_list"], ",")
+	for i, v := range l {
+		if v == p {
+			l = append(l[:i], l[i+1:]...)
+		}
+	}
+	Stores.Manifest["ignore_list"] = strings.Join(l, ",")
 }

@@ -15,6 +15,10 @@ import (
 	"github.com/fatih/color"
 )
 
+const (
+	VERSION = "0.1.0"
+)
+
 func main() {
 	parser := argparse.NewParser("dit", "A tool to sync directories")
 	OverrideCmdDir := parser.String("", "in-dir", &argparse.Options{Required: false, Help: "Override directory for command", Default: "."})
@@ -54,6 +58,8 @@ func main() {
 	masterList := master.NewCommand("list", "List all files in the master record")
 	masterRemoveFile := masterRemove.StringPositional(&argparse.Options{Required: true, Help: "File to remove from the master record."})
 
+	PrintVersion := parser.NewCommand("version", "Print version")
+
 	err := parser.Parse(os.Args)
 	if err != nil {
 		// In case of error print error and print usage
@@ -76,6 +82,10 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+	}
+
+	if PrintVersion.Happened() {
+		fmt.Println(color.CyanString("[~]"), "dit version "+VERSION)
 	}
 
 	switch {

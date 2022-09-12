@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/TheVoxcraft/dit/pkg/ditmaster"
@@ -98,7 +99,7 @@ func handleConnection(c net.Conn, db *sql.DB) {
 		fmt.Println("GET_PARCEL", color.YellowString("@"+msg.OriginAuthor)+msg.ParcelPath)
 		netparcel, err := GetParcelFiles(db, msg.OriginAuthor, msg.ParcelPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "parse error:", err)
+			fmt.Fprintln(os.Stderr, "db error:", err)
 			return
 		}
 
@@ -149,6 +150,7 @@ func handleConnection(c net.Conn, db *sql.DB) {
 }
 
 func GetParcelFiles(db *sql.DB, author string, parcel string) (ditnet.NetParcel, error) {
+	author = strings.TrimPrefix(author, "@")
 	rows, err := db.Query("SELECT * FROM files WHERE author=? AND parcel=?", author, parcel)
 	if err != nil {
 		return ditnet.NetParcel{}, err

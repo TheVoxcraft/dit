@@ -13,7 +13,7 @@ import (
 const (
 	DitPath             = "/.dit/"
 	ManifestPath        = "/.dit/manifest"
-	PrivateManifestPath = "/.dit/parcel_manifest"
+	PrivateManifestPath = "/.dit/parcel"
 	MasterPath          = "/.dit/master"
 	LockFilePath        = "/.dit/dit.lock"
 )

@@ -3,6 +3,7 @@ package ditclient
 import (
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -15,33 +16,36 @@ import (
 	"github.com/fatih/color"
 )
 
-func SyncFilesDown(parcel ditmaster.ParcelInfo, base_path string) {
-	req := ditnet.ClientMessage{
-		OriginAuthor: parcel.Author,
-		ParcelPath:   parcel.RepoPath,
-		MessageType:  ditnet.MSG_GET_PARCEL,
-	}
+func SyncFilesDown(parcel ditmaster.ParcelInfo, base_path string, get_files []string) {
+	fpaths := get_files
+	if len(fpaths) == 0 { // get all files if none are supplied
+		req := ditnet.ClientMessage{
+			OriginAuthor: parcel.Author,
+			ParcelPath:   parcel.RepoPath,
+			MessageType:  ditnet.MSG_GET_PARCEL,
+		}
 
-	resp := ditnet.SendMessageToServer(req, parcel.Mirror) // Get file paths from mirror
+		resp := ditnet.SendMessageToServer(req, parcel.Mirror) // Get file paths from mirror
 
-	var netparcel ditnet.NetParcel
-	if resp.MessageType != ditnet.MSG_PARCEL {
-		color.HiRed("ERROR: Failed to get file paths from", parcel.Mirror)
-		fmt.Println("Got response type", resp.MessageType, "MSG: ", resp.Message)
-		return
-	}
+		var netparcel ditnet.NetParcel
+		if resp.MessageType != ditnet.MSG_PARCEL {
+			color.HiRed("ERROR: Failed to get file paths from", parcel.Mirror)
+			fmt.Println("Got response type", resp.MessageType, "MSG: ", resp.Message)
+			return
+		}
 
-	gob.NewDecoder(bytes.NewReader(resp.Data)).Decode(&netparcel)
-	fmt.Println("   ", len(netparcel.FilePaths), "files from mirror")
+		gob.NewDecoder(bytes.NewReader(resp.Data)).Decode(&netparcel)
+		fmt.Println("   ", len(netparcel.FilePaths), "files from mirror")
 
-	fpaths := netparcel.FilePaths
-	for _, file := range fpaths {
-		color.Blue("\tGot %s", file)
+		fpaths := netparcel.FilePaths
+		for _, file := range fpaths {
+			color.Blue("\tGot %s", file)
+		}
 	}
 
 	// get files from mirror
 	for _, fpath := range fpaths {
-		req = ditnet.ClientMessage{
+		req := ditnet.ClientMessage{
 			OriginAuthor: parcel.Author,
 			ParcelPath:   parcel.RepoPath,
 			MessageType:  ditnet.MSG_GET_FILE,
@@ -125,6 +129,31 @@ func SyncFilesUp(sync_files []ditsync.SyncFile, parcel ditmaster.ParcelInfo) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func GetParcelInfoFromMirror(author string, repoPath string, mirror string) (ditnet.NetParcel, error) {
+	author = strings.TrimSpace(strings.ToLower(author))
+	repoPath = strings.TrimSpace(strings.ToLower(repoPath))
+	mirror = strings.TrimSpace(strings.ToLower(mirror))
+
+	req := ditnet.ClientMessage{
+		OriginAuthor: author,
+		ParcelPath:   repoPath,
+		MessageType:  ditnet.MSG_GET_PARCEL,
+		//TODO: Secret: secret,
+	}
+
+	resp := ditnet.SendMessageToServer(req, mirror)
+	if resp.MessageType != ditnet.MSG_PARCEL {
+		return ditnet.NetParcel{}, errors.New("failed to get parcel info from mirror")
+	}
+
+	var netparcel ditnet.NetParcel
+	gob.NewDecoder(bytes.NewReader(resp.Data)).Decode(&netparcel)
+
+	netparcel.Info.Mirror = mirror
+
+	return netparcel, nil
 }
 
 func SetDitConfig(author string, mirror string, pub_key string) string {
@@ -213,7 +242,7 @@ func ParseFullRepoPath(full_repo string) (string, string) {
 	full_repo = strings.TrimSpace(full_repo)
 	if strings.HasPrefix(full_repo, "@") && strings.Contains(full_repo, "/") {
 		split := strings.Split(full_repo, "/")
-		return split[0], strings.Join(split[1:], "/")
+		return split[0][1:], strings.Join(split[1:], "/")
 	} else {
 		log.Fatal("ERROR: Invalid repo path. format: @author/repo/path")
 	}

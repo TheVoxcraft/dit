@@ -16,11 +16,12 @@ import (
 
 func main() {
 	parser := argparse.NewParser("dit", "A tool to sync directories")
-	OverrideToDir := parser.String("", "to-dir", &argparse.Options{Required: false, Help: "Override directory for command", Default: "."})
+	OverrideCmdDir := parser.String("", "in-dir", &argparse.Options{Required: false, Help: "Override directory for command", Default: "."})
 
 	// Actions
 	get := parser.NewCommand("get", "Get a parcel from a mirror")
 	getRepo := get.String("r", "repo", &argparse.Options{Required: true, Help: "Full path to the parcel. format: @author/repo/path"})
+	getMirror := get.String("m", "mirror", &argparse.Options{Required: false, Help: "Mirror to get the parcel from, overrides the default mirror.", Default: ""})
 
 	status := parser.NewCommand("status", "Show the status of the directory")
 
@@ -38,7 +39,7 @@ func main() {
 	init := parser.NewCommand("init", "Initialize a directory")
 	initClean := init.Flag("c", "clean", &argparse.Options{Required: false, Help: "Clean initialization, removes all files in .dit"})
 	initRepoPath := init.String("r", "repo", &argparse.Options{Required: true, Help: "Path to the repository, used to identify the parcel."})
-	initMirror := init.String("m", "mirror", &argparse.Options{Required: false, Help: "Mirror to use for the parcel, overrides the default mirror."})
+	initMirror := init.String("m", "mirror", &argparse.Options{Required: false, Help: "Mirror to use for the parcel, overrides the default mirror.", Default: ""})
 
 	ignore := parser.NewCommand("ignore", "Add file patterns to ignore list")
 	ignoreAdd := ignore.String("a", "add", &argparse.Options{Required: false, Help: "Add a pattern to the ignore list. usage: dit ignore -a \".git/*\""})
@@ -53,17 +54,17 @@ func main() {
 		return
 	}
 
-	hasDitParcel := ditmaster.HasDitParcel(*OverrideToDir) // check if the current directory has a .dit folder
+	hasDitParcel := ditmaster.HasDitParcel(*OverrideCmdDir) // check if the current directory has a .dit folder
 	parcel := ditmaster.ParcelInfo{}
 	parcel_files := []string{}
 	// try to load parcel
 	if hasDitParcel {
-		err = ditmaster.LoadStoresFromDisk(*OverrideToDir)
+		err = ditmaster.LoadStoresFromDisk(*OverrideCmdDir)
 		if err != nil {
 			log.Fatal(err)
 		}
-		parcel = ditmaster.GetParcelInfo(*OverrideToDir)
-		parcel_files, err = ditsync.GetFileList(*OverrideToDir, parcel.IgnoreList)
+		parcel = ditmaster.GetParcelInfo(*OverrideCmdDir)
+		parcel_files, err = ditsync.GetFileList(*OverrideCmdDir, parcel.IgnoreList)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -151,15 +152,15 @@ func main() {
 			}
 			ditclient.SyncFilesUp(sync_files, parcel)
 		} else if sync_down.Happened() {
-			ditclient.SyncFilesDown(parcel, *OverrideToDir)
-			ditmaster.SyncStoresToDisk(*OverrideToDir) // save stores to disk
+			ditclient.SyncFilesDown(parcel, *OverrideCmdDir, []string{})
+			ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
 		} else {
 			fmt.Println(parser.Usage(err))
 		}
 
 	case init.Happened():
 		if *initClean {
-			ditmaster.CleanDitFolder(*OverrideToDir)
+			ditmaster.CleanDitFolder(*OverrideCmdDir)
 			time.Sleep(1000 * time.Millisecond) // wait for the folder to be deleted before writing TODO: fix this
 		} else {
 			if hasDitParcel {
@@ -190,12 +191,12 @@ func main() {
 			Author:     strings.TrimSpace(author),
 			RepoPath:   canonicalRepoPath,
 			Mirror:     strings.TrimSpace(mirror),
-			IgnoreList: []string{".git/*", ".gitignore", ".dit/*"},
+			IgnoreList: []string{".git/*", ".gitignore", ".dit/manifest", ".dit/master"},
 		}
 
-		err := ditmaster.InitDitFolder(*OverrideToDir, parcel_info)
+		err := ditmaster.InitDitFolder(*OverrideCmdDir, parcel_info)
 		if err != nil {
-			ditmaster.CleanDitFolder(*OverrideToDir) // clean up as init failed
+			ditmaster.CleanDitFolder(*OverrideCmdDir) // clean up as init failed
 			log.Fatal("Failed to initialize dit folder: ", err)
 		}
 	case ignore.Happened():
@@ -206,11 +207,11 @@ func main() {
 
 		if *ignoreAdd != "" {
 			parcel.AddIgnorePattern(*ignoreAdd)
-			ditmaster.SyncStoresToDisk(*OverrideToDir) // save stores to disk
+			ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
 			fmt.Println(color.CyanString("[-]"), "Added pattern", color.YellowString(*ignoreAdd))
 		} else if *ignoreRemove != "" {
 			parcel.RemoveIgnorePattern(*ignoreRemove)
-			ditmaster.SyncStoresToDisk(*OverrideToDir) // save stores to disk
+			ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
 			fmt.Println(color.CyanString("[-]"), "Removed pattern", color.YellowString(*ignoreAdd))
 		} else if *ignoreList {
 			PrintPreStatus(parcel, "ignore patterns")
@@ -227,16 +228,42 @@ func main() {
 		}
 		// parse full repo path
 		author, repoPath := ditclient.ParseFullRepoPath(*getRepo)
+		repoPath = ditclient.CanonicalizeRepoPath(repoPath)
 		if author == "" || repoPath == "" {
 			log.Fatal("Invalid repo path")
 		}
+
+		mirror := ditclient.GetDitFromConfig("mirror")
+
+		if *getMirror != "" { // Override mirror
+			mirror = *getMirror
+		} else if mirror == "" {
+			color.HiYellow("Mirror not set, please use 'dit config set' or use --mirror")
+			return
+		}
+
 		// get parcel info from mirror
+		netparcel, err := ditclient.GetParcelInfoFromMirror(author, repoPath, mirror)
+		if err != nil {
+			log.Fatal("Failed to get parcel info from mirror: ", err)
+		}
+		new_parcel := netparcel.Info
+		files_to_get := netparcel.FilePaths
+		if len(files_to_get) == 0 {
+			color.HiYellow("No parcel found at %s%s", author, repoPath)
+			return
+		}
 
 		// init dit folder
+		err = ditmaster.InitDitFolder(*OverrideCmdDir, new_parcel)
+		if err != nil {
+			ditmaster.CleanDitFolder(*OverrideCmdDir) // clean up as init failed
+			log.Fatal("Failed to initialize dit folder: ", err)
+		}
 
 		// sync files down
-		ditclient.SyncFilesDown(parcel, *OverrideToDir) // TODO: change to . for current directory
-		ditmaster.SyncStoresToDisk(*OverrideToDir)      // save stores to disk
+		ditclient.SyncFilesDown(new_parcel, *OverrideCmdDir, files_to_get)
+		ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
 	}
 
 }

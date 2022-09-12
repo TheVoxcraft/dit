@@ -47,10 +47,7 @@ var Stores = DitMaster{
 func HasDitParcel(path string) bool {
 	// check if the folder has a .dit folder, return true if it does
 	_, err := os.Stat(filepath.Join(path, DitPath))
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func SyncStoresToDisk(path string) error {
@@ -223,7 +220,7 @@ func (ParcelInfo) AddIgnorePattern(p string) {
 	}
 	l := strings.Split(Stores.PrivateManifest["ignore_list"], ",")
 	l = append(l, p)
-	Stores.Manifest["ignore_list"] = strings.Join(l, ",")
+	Stores.PrivateManifest["ignore_list"] = strings.Join(l, ",")
 }
 
 func (ParcelInfo) RemoveIgnorePattern(p string) {
@@ -236,5 +233,5 @@ func (ParcelInfo) RemoveIgnorePattern(p string) {
 			l = append(l[:i], l[i+1:]...)
 		}
 	}
-	Stores.Manifest["ignore_list"] = strings.Join(l, ",")
+	Stores.PrivateManifest["ignore_list"] = strings.Join(l, ",")
 }

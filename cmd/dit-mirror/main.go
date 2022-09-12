@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	DITMIRROR_VERSION = "0.1.0"
+	DITMIRROR_VERSION = "1.0.0"
 )
 
 func main() {

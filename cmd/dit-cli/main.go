@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	VERSION = "0.1.0"
+	VERSION = "0.2.0"
 )
 
 func main() {
@@ -30,17 +30,24 @@ func main() {
 
 	status := parser.NewCommand("status", "Show the status of the directory")
 
+	parcelManage := parser.NewCommand("parcel", "Manage parcel")
+	parcelSet := parcelManage.NewCommand("set", "Configure parcel")
+	parcelList := parcelManage.NewCommand("list", "List parcel configuration")
+	parcelSetRepo := parcelSet.String("r", "repo", &argparse.Options{Required: false, Help: "Path to the parcel. format: /repo/path"})
+	parcelSetAuthor := parcelSet.String("a", "author", &argparse.Options{Required: false, Help: "Author of the parcel"})
+	parcelSetMirror := parcelSet.String("m", "mirror", &argparse.Options{Required: false, Help: "Mirror for this parcel", Default: ""})
+
 	config := parser.NewCommand("config", "Configure dit")
-	config_set := config.NewCommand("set", "Set config values")
-	config_list := config.NewCommand("list", "List the config to stdout")
-	configSetAuthor := config_set.String("a", "author", &argparse.Options{Required: true, Help: "Author for parcels.", Default: ""})
-	configSetMirror := config_set.String("m", "mirror", &argparse.Options{Required: true, Help: "Default mirror to use.", Default: ""})
+	configSet := config.NewCommand("set", "Set config values")
+	configList := config.NewCommand("list", "List the config to stdout")
+	configSetAuthor := configSet.String("a", "author", &argparse.Options{Required: true, Help: "Author for parcels.", Default: ""})
+	configSetMirror := configSet.String("m", "mirror", &argparse.Options{Required: true, Help: "Default mirror to use.", Default: ""})
 	//configPublicKey := config.String("p", "public-key", &argparse.Options{Required: true, Help: "Path to the public key.", Default: ""})
 
 	sync := parser.NewCommand("sync", "Sync the directory")
-	sync_up := sync.NewCommand("up", "Sync the directory to the parcel mirror")
-	sync_up_master := sync_up.Flag("", "only-master", &argparse.Options{Required: false, Help: "Only sync the master file (removing files from mirror if not present)", Default: false})
-	sync_down := sync.NewCommand("down", "Sync the directory from the parcel mirror")
+	syncUp := sync.NewCommand("up", "Sync the directory to the parcel mirror")
+	syncUpOnlyMaster := syncUp.Flag("", "only-master", &argparse.Options{Required: false, Help: "Only sync the master file (removing files from mirror if not present)", Default: false})
+	syncDown := sync.NewCommand("down", "Sync the directory from the parcel mirror")
 
 	init := parser.NewCommand("init", "Initialize a directory")
 	initClean := init.Flag("c", "clean", &argparse.Options{Required: false, Help: "Clean initialization, removes all files in .dit"})
@@ -110,8 +117,46 @@ func main() {
 				color.HiYellow("\tM %s", file)
 			}
 		}
+
+	case parcelManage.Happened():
+		if !hasDitParcel {
+			color.HiYellow("This directory is not a dit parcel.")
+			return
+		}
+		if parcelList.Happened() {
+			PrintPreStatus(parcel, "parcel list:")
+			for key, value := range ditmaster.Stores.Manifest {
+				fmt.Println(color.MagentaString("\t%s:", key), color.WhiteString(value))
+			}
+		} else if parcelSet.Happened() {
+			wasSet := false
+			if *parcelSetRepo != "" {
+				wasSet = true
+				ditmaster.Stores.Manifest["repo_path"] = *parcelSetRepo
+			}
+			if *parcelSetAuthor != "" {
+				wasSet = true
+				ditmaster.Stores.Manifest["author"] = *parcelSetAuthor
+			}
+			if *parcelSetMirror != "" {
+				wasSet = true
+				ditmaster.Stores.Manifest["mirror"] = *parcelSetMirror
+			}
+			if !wasSet {
+				fmt.Println(color.HiYellowString("No values were set."))
+				fmt.Println(parcelSet.Usage(err))
+				return
+			} else {
+				fmt.Println(color.CyanString("[-]"), "Values set.")
+			}
+			err = ditmaster.SyncStoresToDisk(*OverrideCmdDir)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+
 	case config.Happened():
-		if config_set.Happened() {
+		if configSet.Happened() {
 			author := *configSetAuthor
 			mirror := *configSetMirror
 			//publicKey := *configPublicKey
@@ -128,10 +173,11 @@ func main() {
 
 			config_path := ditclient.SetDitConfig(author, mirror, "")
 			fmt.Println(color.CyanString("[-]"), color.YellowString(config_path), "Config set.")
-		} else if config_list.Happened() {
+		} else if configList.Happened() {
 			fmt.Println(color.CyanString("[-]"), "Dit config")
 			ditclient.PrintDitConfig()
 		}
+
 	case sync.Happened():
 		if !hasDitParcel {
 			color.HiYellow("This directory is not a dit parcel.")
@@ -144,8 +190,8 @@ func main() {
 			return
 		}
 
-		if sync_up.Happened() {
-			if *sync_up_master {
+		if syncUp.Happened() {
+			if *syncUpOnlyMaster {
 				ditclient.SyncMasterUp(parcel)
 				fmt.Println(color.CyanString("[-]"), "Synced master file to mirror.")
 				return
@@ -175,7 +221,7 @@ func main() {
 			}
 			ditclient.SyncMasterUp(parcel)
 			ditclient.SyncFilesUp(sync_files, parcel, true)
-		} else if sync_down.Happened() {
+		} else if syncDown.Happened() {
 			ditclient.SyncFilesDown(parcel, *OverrideCmdDir, []string{})
 			ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
 		} else {
@@ -223,6 +269,7 @@ func main() {
 			ditmaster.CleanDitFolder(*OverrideCmdDir) // clean up as init failed
 			log.Fatal("Failed to initialize dit folder: ", err)
 		}
+
 	case ignore.Happened():
 		if !hasDitParcel {
 			color.HiYellow("This directory is not a dit parcel.")
@@ -245,6 +292,7 @@ func main() {
 		} else {
 			fmt.Println(parser.Usage(err))
 		}
+
 	case get.Happened():
 		if hasDitParcel {
 			color.HiYellow("This directory is already a dit parcel. Use 'dit sync' to sync files.")
@@ -288,6 +336,7 @@ func main() {
 		// sync files down
 		ditclient.SyncFilesDown(new_parcel, *OverrideCmdDir, files_to_get)
 		ditmaster.SyncStoresToDisk(*OverrideCmdDir) // save stores to disk
+
 	case master.Happened():
 		if !hasDitParcel {
 			color.HiYellow("This directory is not a dit parcel.")

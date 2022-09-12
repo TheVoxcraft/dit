@@ -208,3 +208,14 @@ func CanonicalizeRepoPath(repo string) string {
 	}
 	return strings.ToLower(new)
 }
+
+func ParseFullRepoPath(full_repo string) (string, string) {
+	full_repo = strings.TrimSpace(full_repo)
+	if strings.HasPrefix(full_repo, "@") && strings.Contains(full_repo, "/") {
+		split := strings.Split(full_repo, "/")
+		return split[0], strings.Join(split[1:], "/")
+	} else {
+		log.Fatal("ERROR: Invalid repo path. format: @author/repo/path")
+	}
+	return "", ""
+}

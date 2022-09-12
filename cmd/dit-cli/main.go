@@ -16,8 +16,12 @@ import (
 
 func main() {
 	parser := argparse.NewParser("dit", "A tool to sync directories")
+	OverrideToDir := parser.String("", "to-dir", &argparse.Options{Required: false, Help: "Override directory for command", Default: "."})
 
 	// Actions
+	get := parser.NewCommand("get", "Get a parcel from a mirror")
+	getRepo := get.String("r", "repo", &argparse.Options{Required: true, Help: "Full path to the parcel. format: @author/repo/path"})
+
 	status := parser.NewCommand("status", "Show the status of the directory")
 
 	config := parser.NewCommand("config", "Configure dit")
@@ -28,8 +32,8 @@ func main() {
 	//configPublicKey := config.String("p", "public-key", &argparse.Options{Required: true, Help: "Path to the public key.", Default: ""})
 
 	sync := parser.NewCommand("sync", "Sync the directory")
-	sync_up := sync.NewCommand("up", "Sync the directory to the server")
-	sync_down := sync.NewCommand("down", "Sync the directory from the server")
+	sync_up := sync.NewCommand("up", "Sync the directory to the parcel mirror")
+	sync_down := sync.NewCommand("down", "Sync the directory from the parcel mirror")
 
 	init := parser.NewCommand("init", "Initialize a directory")
 	initClean := init.Flag("c", "clean", &argparse.Options{Required: false, Help: "Clean initialization, removes all files in .dit"})
@@ -49,17 +53,17 @@ func main() {
 		return
 	}
 
-	hasDitParcel := ditmaster.HasDitParcel(".") // check if the current directory has a .dit folder
+	hasDitParcel := ditmaster.HasDitParcel(*OverrideToDir) // check if the current directory has a .dit folder
 	parcel := ditmaster.ParcelInfo{}
 	parcel_files := []string{}
 	// try to load parcel
 	if hasDitParcel {
-		err = ditmaster.LoadStoresFromDisk(".")
+		err = ditmaster.LoadStoresFromDisk(*OverrideToDir)
 		if err != nil {
 			log.Fatal(err)
 		}
-		parcel = ditmaster.GetParcelInfo(".")
-		parcel_files, err = ditsync.GetFileList(".", parcel.IgnoreList)
+		parcel = ditmaster.GetParcelInfo(*OverrideToDir)
+		parcel_files, err = ditsync.GetFileList(*OverrideToDir, parcel.IgnoreList)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -147,15 +151,15 @@ func main() {
 			}
 			ditclient.SyncFilesUp(sync_files, parcel)
 		} else if sync_down.Happened() {
-			ditclient.SyncFilesDown(parcel, "test/") // TODO: change to . for current directory
-			ditmaster.SyncStoresToDisk(".")          // save stores to disk
+			ditclient.SyncFilesDown(parcel, *OverrideToDir)
+			ditmaster.SyncStoresToDisk(*OverrideToDir) // save stores to disk
 		} else {
 			fmt.Println(parser.Usage(err))
 		}
 
 	case init.Happened():
 		if *initClean {
-			ditmaster.CleanDitFolder(".")
+			ditmaster.CleanDitFolder(*OverrideToDir)
 			time.Sleep(1000 * time.Millisecond) // wait for the folder to be deleted before writing TODO: fix this
 		} else {
 			if hasDitParcel {
@@ -189,9 +193,9 @@ func main() {
 			IgnoreList: []string{".git/*", ".gitignore", ".dit/*"},
 		}
 
-		err := ditmaster.InitDitFolder(".", parcel_info)
+		err := ditmaster.InitDitFolder(*OverrideToDir, parcel_info)
 		if err != nil {
-			ditmaster.CleanDitFolder(".") // clean up as init failed
+			ditmaster.CleanDitFolder(*OverrideToDir) // clean up as init failed
 			log.Fatal("Failed to initialize dit folder: ", err)
 		}
 	case ignore.Happened():
@@ -202,11 +206,11 @@ func main() {
 
 		if *ignoreAdd != "" {
 			parcel.AddIgnorePattern(*ignoreAdd)
-			ditmaster.SyncStoresToDisk(".") // save stores to disk
+			ditmaster.SyncStoresToDisk(*OverrideToDir) // save stores to disk
 			fmt.Println(color.CyanString("[-]"), "Added pattern", color.YellowString(*ignoreAdd))
 		} else if *ignoreRemove != "" {
 			parcel.RemoveIgnorePattern(*ignoreRemove)
-			ditmaster.SyncStoresToDisk(".") // save stores to disk
+			ditmaster.SyncStoresToDisk(*OverrideToDir) // save stores to disk
 			fmt.Println(color.CyanString("[-]"), "Removed pattern", color.YellowString(*ignoreAdd))
 		} else if *ignoreList {
 			PrintPreStatus(parcel, "ignore patterns")
@@ -216,6 +220,23 @@ func main() {
 		} else {
 			fmt.Println(parser.Usage(err))
 		}
+	case get.Happened():
+		if hasDitParcel {
+			color.HiYellow("This directory is already a dit parcel. Use 'dit sync' to sync files.")
+			return
+		}
+		// parse full repo path
+		author, repoPath := ditclient.ParseFullRepoPath(*getRepo)
+		if author == "" || repoPath == "" {
+			log.Fatal("Invalid repo path")
+		}
+		// get parcel info from mirror
+
+		// init dit folder
+
+		// sync files down
+		ditclient.SyncFilesDown(parcel, *OverrideToDir) // TODO: change to . for current directory
+		ditmaster.SyncStoresToDisk(*OverrideToDir)      // save stores to disk
 	}
 
 }

@@ -2,7 +2,9 @@ package ditmaster
 
 import (
 	"bufio"
+	"errors"
 	"os"
+	"strings"
 )
 
 var kvDELIMITER string = "|"
@@ -39,6 +41,11 @@ func KVSave(path string, store map[string]string) error { // save keys to exisit
 	defer file.Close()
 	writer := bufio.NewWriter(file)
 	for key, value := range store {
+		if strings.Contains(key+value, kvDELIMITER) {
+			return errors.New("key or value contains delimiter")
+		} else if strings.Contains(key+value, "\n") {
+			return errors.New("key or value contains newline")
+		}
 		line := key + kvDELIMITER + value
 		writer.WriteString(line + "\n")
 	}

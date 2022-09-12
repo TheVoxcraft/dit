@@ -8,13 +8,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
 	MINIMUM_GZIP_SIZE = 1024
 )
 
-var IgnoreList = []string{".git", ".gitignore", ".dit"}
+var IgnoreList = []string{".git/*", ".gitignore", ".dit/*"}
 
 type SyncFile struct {
 	FilePath     string
@@ -23,12 +24,27 @@ type SyncFile struct {
 	IsNew        bool
 }
 
-func isIgnored(path string) bool {
-	// TODO: iterate through path components and check if any of them are in the ignore list
+func isIgnored(fpath string) bool {
 	for _, ignore := range IgnoreList {
-		ignoreLen := len(ignore)
-		if len(path) >= ignoreLen {
-			if path[:ignoreLen] == ignore {
+		wildcardFront := ignore[0] == '*'
+		wildcardBack := ignore[len(ignore)-1] == '*'
+		if wildcardFront && wildcardBack {
+			ignore = ignore[1 : len(ignore)-1]
+			if strings.Contains(fpath, ignore) {
+				return true
+			}
+		} else if wildcardFront {
+			ignore = ignore[1:]
+			if strings.HasSuffix(fpath, ignore) {
+				return true
+			}
+		} else if wildcardBack {
+			ignore = ignore[:len(ignore)-1]
+			if strings.HasPrefix(fpath, ignore) {
+				return true
+			}
+		} else {
+			if fpath == ignore {
 				return true
 			}
 		}

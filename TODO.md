@@ -1,6 +1,8 @@
 # To-do
 
+* User registration
 * Add asymmetrical authentication
-* Add asymmetrical data blob encryption/decryption
+* Data blob encryption/decryption
+* `ls` command for listing repositories
 * Search functionality under author
-* Check if parcel exists without downloading
+* Mirror: User storage quotas
